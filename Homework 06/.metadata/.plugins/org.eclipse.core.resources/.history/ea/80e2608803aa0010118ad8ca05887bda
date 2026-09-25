@@ -1,0 +1,78 @@
+/*
+ * timers.c
+ *
+ *  Created on: Oct 7, 2025
+ *      Author: jcont
+ */
+
+
+#include "msp430.h"
+#include "ports.h"
+#include "macros.h"
+
+
+
+ volatile char sw1_blocked;
+ volatile char sw2_blocked;
+ volatile unsigned int sw1_debounce_count;
+ volatile unsigned int sw2_debounce_count;
+extern volatile unsigned char display_changed;
+
+void Init_Timers(void){
+    // TimerB0 SMCLK / continuous / divider
+    TB0CTL = TBSSEL__SMCLK | MC__CONTINUOUS | TBCLR | ID__8;
+
+    // CCR0  Backlight toggle
+    TB0CCR0 = TB0R + BACKLIGHT_INTERVAL;
+    TB0CCTL0 = CCIE;
+
+    // CCR1 Switch debounce
+    TB0CCR1 = TB0R + DEBOUNCE_STEP;
+    TB0CCTL1 = CCIE;
+}
+
+
+//-------------------- Timer ISR --------------------
+#pragma vector = TIMER0_B0_VECTOR
+__interrupt void Timer0_B0_ISR(void){
+    // Only toggle backlight if no switch debounce is active
+    if(!debounce_SW1 && !debounce_SW2){
+        if(backlight_state){
+            P6OUT &= ~LCD_BACKLITE;
+            backlight_state = 0;
+        } else {
+            P6OUT |= LCD_BACKLITE;
+            backlight_state = 1;
+        }
+        display_changed = 1;
+    }
+    TB0CCR0 += BACKLIGHT_INTERVAL;
+}
+
+#pragma vector = TIMER0_B1_VECTOR
+__interrupt void Timer0_B1_ISR(void){
+    switch(__even_in_range(TB0IV,14)){
+        case 2: // CCR1
+            // Increment debounce counters if active
+            if(debounce_SW1){
+                debounce_count_SW1++;
+                if(debounce_count_SW1 >= DEBOUNCE_THRESHOLD){
+                    debounce_SW1 = 0;       // debounce done
+                    debounce_count_SW1 = 0;
+                    P4IE |= SW1;             // re-enable SW1 interrupt
+                }
+            }
+            if(debounce_SW2){
+                debounce_count_SW2++;
+                if(debounce_count_SW2 >= DEBOUNCE_THRESHOLD){
+                    debounce_SW2 = 0;       // debounce done
+                    debounce_count_SW2 = 0;
+                    P2IE |= SW2;             // re-enable SW2 interrupt
+                }
+            }
+            TB0CCR1 += DEBOUNCE_STEP;
+            break;
+        case 14: break; // overflow
+        default: break;
+    }
+}

@@ -1,0 +1,93 @@
+//------------------------------------------------------------------------------
+// main.c
+// PROJECT 7 – Auto Calibration + Black Line Circle Navigation
+// ECE 306 – Embedded Systems
+//
+// All Project 6 code removed.
+//------------------------------------------------------------------------------
+
+#include "msp430.h"
+#include <string.h>
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+#include "ports.h"
+
+//============================================================
+// PROJECT 7 GLOBAL VARIABLE DEFINITIONS
+// (These match the extern declarations in macros.h)
+//============================================================
+unsigned int ambient_left = 0;
+unsigned int ambient_right = 0;
+
+unsigned int white_left = 0;
+unsigned int white_right = 0;
+
+unsigned int black_left = 0;
+unsigned int black_right = 0;
+
+unsigned int left_threshold = 0;
+unsigned int right_threshold = 0;
+
+unsigned char p7_state = P7_CAL_AMBIENT;
+
+float p7_timer = 0.0;
+
+unsigned int circle_time_counter = 0;
+unsigned int one_circle_duration = 0;
+unsigned int p7_delay = 0;
+
+// Display globals
+extern char display_line[FOURTH][ELEVENTH];
+extern char *display[FOURTH];
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+extern volatile unsigned int LCD_counter;
+
+// From ADC ISR
+extern unsigned int ADC_Left_Detect;
+extern unsigned int ADC_Right_Detect;
+
+//============================================================
+// FUNCTION PROTOTYPES
+//============================================================
+void P7_StateMachine(void);
+void P7_HandleCalibration(void);
+void P7_HandleMotion(void);
+
+//============================================================
+// MAIN
+//============================================================
+void main(void) {
+    WDTCTL = WDTPW | WDTHOLD;     // Stop watchdog timer
+    PM5CTL0 &= ~LOCKLPM5;         // Enable GPIO pins
+
+    Init_Ports();
+    Init_Clocks();
+    Init_Conditions();
+    Init_LCD();
+    Init_Timers();
+    Init_ADC();
+    enable_interrupts();
+
+    // Initial display for calibration
+    strcpy(display_line[0], " CAL START ");
+    strcpy(display_line[1], " AMBIENT   ");
+    strcpy(display_line[2], "           ");
+    strcpy(display_line[3], " SW1 NEXT  ");
+    display_changed = TRUE;
+
+    //============================================================
+    // MAIN LOOP
+    //============================================================
+    while (ALWAYS) {
+
+        // --- RUN PROJECT 7 STATE MACHINE ---
+        P7_StateMachine();
+
+        // --- REGULAR SYSTEM TASKS ---
+        Switches_Process();    // SW1 advances calibration / starts P7
+        Display_Process();     // LCD updates every 200 ms
+        P3OUT ^= TEST_PROBE;   // heartbeat LED pin
+    }
+}

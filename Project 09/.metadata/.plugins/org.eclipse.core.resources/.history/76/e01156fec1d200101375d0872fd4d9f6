@@ -1,0 +1,107 @@
+################################################################################
+# Automatically-generated file. Do not edit!
+################################################################################
+
+SHELL = cmd.exe
+
+# Add inputs and outputs from these tool invocations to the build variables 
+CMD_SRCS += \
+../lnk_msp430fr2355.cmd 
+
+C_SRCS += \
+../Display.c \
+../adc.c \
+../black_line.c \
+../clocks.c \
+../comm_system.c \
+../init.c \
+../led.c \
+../main.c \
+../movement.c \
+../movement_state.c \
+../ports.c \
+../switches.c \
+../system.c \
+../timers.c 
+
+C_DEPS += \
+./Display.d \
+./adc.d \
+./black_line.d \
+./clocks.d \
+./comm_system.d \
+./init.d \
+./led.d \
+./main.d \
+./movement.d \
+./movement_state.d \
+./ports.d \
+./switches.d \
+./system.d \
+./timers.d 
+
+OBJS += \
+./Display.obj \
+./adc.obj \
+./black_line.obj \
+./clocks.obj \
+./comm_system.obj \
+./init.obj \
+./led.obj \
+./main.obj \
+./movement.obj \
+./movement_state.obj \
+./ports.obj \
+./switches.obj \
+./system.obj \
+./timers.obj 
+
+OBJS__QUOTED += \
+"Display.obj" \
+"adc.obj" \
+"black_line.obj" \
+"clocks.obj" \
+"comm_system.obj" \
+"init.obj" \
+"led.obj" \
+"main.obj" \
+"movement.obj" \
+"movement_state.obj" \
+"ports.obj" \
+"switches.obj" \
+"system.obj" \
+"timers.obj" 
+
+C_DEPS__QUOTED += \
+"Display.d" \
+"adc.d" \
+"black_line.d" \
+"clocks.d" \
+"comm_system.d" \
+"init.d" \
+"led.d" \
+"main.d" \
+"movement.d" \
+"movement_state.d" \
+"ports.d" \
+"switches.d" \
+"system.d" \
+"timers.d" 
+
+C_SRCS__QUOTED += \
+"../Display.c" \
+"../adc.c" \
+"../black_line.c" \
+"../clocks.c" \
+"../comm_system.c" \
+"../init.c" \
+"../led.c" \
+"../main.c" \
+"../movement.c" \
+"../movement_state.c" \
+"../ports.c" \
+"../switches.c" \
+"../system.c" \
+"../timers.c" 
+
+

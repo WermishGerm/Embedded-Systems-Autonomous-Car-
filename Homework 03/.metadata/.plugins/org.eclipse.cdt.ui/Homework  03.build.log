@@ -1,0 +1,8 @@
+
+**** Build of configuration Debug for project Homework  03 ****
+
+"D:\\ccs\\utils\\bin\\gmake" -k -j 16 all -O 
+ 
+gmake[1]: 'Homework  03.out' is up to date.
+
+**** Build Finished ****

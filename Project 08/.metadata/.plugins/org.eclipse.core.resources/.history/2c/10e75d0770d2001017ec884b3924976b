@@ -1,0 +1,27 @@
+#include "msp430.h"
+#include "switches.h"
+#include "serial.h"
+#include "LCD.h"
+#include "macros.h"
+
+extern volatile unsigned char baud_mode;
+extern void Set_Baud(unsigned char rate);
+
+void Switches_Process(void) {
+
+    // SW1 (P4.0) - Transmit buffer contents
+    if (!(P4IN & SW1)) {
+        Transmit_Command();
+        __delay_cycles(500000);
+    }
+
+    // SW2 (P2.3) - Toggle baud rate
+    if (!(P2IN & SW2)) {
+        if (baud_mode == BAUD_9600)
+            Set_Baud(BAUD_115200);
+        else
+            Set_Baud(BAUD_9600);
+
+        __delay_cycles(500000);
+    }
+}

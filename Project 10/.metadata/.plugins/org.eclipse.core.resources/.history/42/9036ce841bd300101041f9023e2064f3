@@ -1,0 +1,87 @@
+#include "msp430.h"
+#include <string.h>
+
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+#include "ports.h"
+
+// LCD globals
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+
+// From comm_system.c
+extern uint8_t run_project7;
+
+// From project7_interface.c
+uint8_t project7_update(void);
+void project7_start(void);
+
+void main(void) {
+
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+
+    Init_Ports();
+    Init_Clocks();
+    Init_Conditions();
+    Init_LCD();
+    Init_Timers();
+
+    Init_UART_PC();
+    Init_UART_IOT(BAUD_115200);
+
+    movement_init();
+    movement_pwm_init();
+    command_parser_init();
+
+    enable_interrupts();
+
+    strcpy(display_line[0], " Project 10");
+    strcpy(display_line[1], "  Ready     ");
+    strcpy(display_line[2], " WiFi Cmds  ");
+    strcpy(display_line[3], "   OK       ");
+    display_changed = 1;
+    update_display  = 1;
+
+    while (1) {
+
+        UART_Bridge_Process();
+        movement_update();
+        Carlson_StateMachine();
+        Shape_Update();
+        Display_Process();
+
+        // -----------------------------
+        // PROJECT 7 EXECUTION TRIGGER
+        // -----------------------------
+        if (run_project7) {
+            run_project7 = 0;
+            project7_start();
+
+            strcpy(display_line[0], "Project 7");
+            strcpy(display_line[1], " Running ");
+            strcpy(display_line[2], " AutoCar ");
+            strcpy(display_line[3], " Active  ");
+            display_changed = 1;
+            update_display = 1;
+        }
+
+        // -----------------------------
+        // POLL PROJECT 7 STATUS
+        // -----------------------------
+        if (project7_update()) {
+
+            strcpy(display_line[0], "Project 7");
+            strcpy(display_line[1], " Complete");
+            strcpy(display_line[2], " Ready");
+            strcpy(display_line[3], " For Cmds");
+            display_changed = 1;
+            update_display = 1;
+        }
+
+        P6OUT ^= GRN_LED;  // heartbeat
+        P3OUT ^= TEST_PROBE;
+    }
+}

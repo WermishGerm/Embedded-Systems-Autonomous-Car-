@@ -1,0 +1,38 @@
+#include "msp430.h"
+#include "functions.h"
+#include "LCD.h"
+#include "serial.h"
+#include "macros.h"
+
+extern char display_line[4][11];
+
+void main(void) {
+
+    WDTCTL = WDTPW | WDTHOLD;
+
+    Init_Ports();
+    Init_Clocks();
+    Init_Conditions();
+    Init_LCD();
+    Init_Timers();
+
+    enable_interrupts();
+
+    Init_Serial();
+    serial_test_mode = 1;
+
+    strcpy(display_line[LINE1], "Waiting   ");
+    strcpy(display_line[LINE2], "          ");
+    strcpy(display_line[LINE3], "9600      ");
+    strcpy(display_line[LINE4], "          ");
+
+    update_string(display_line[LINE1], LINE1);
+    update_string(display_line[LINE2], LINE2);
+    update_string(display_line[LINE3], LINE3);
+    update_string(display_line[LINE4], LINE4);
+
+    while (1) {
+        Serial_Process_RX();
+        Switches_Process();
+    }
+}

@@ -1,0 +1,151 @@
+/*
+ * switches.c
+ *
+ * Created on: Oct 1, 2025
+ * Author: Juan Contreras
+ *
+ * List of switches used to cycle through getting shapes
+ *
+ */
+#include  "msp430.h"
+#include "ports.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+
+unsigned char sw1_position;
+unsigned char sw2_position;
+
+unsigned char okay_switch1;
+unsigned char okay_switch2;
+
+unsigned int count_debounce_SW1;
+unsigned int count_debounce_SW2;
+
+extern char display_line[4][11];
+extern volatile unsigned int lt_stop;
+unsigned int shapes_menu = 0;
+extern unsigned char event;
+unsigned char shape_on_screen;
+
+extern volatile unsigned char display_changed;
+extern unsigned int delay_start; // Added external reference to delay_start
+extern unsigned char search_state; // Added external reference to search_state
+
+extern volatile unsigned char serial_test_mode;
+extern void Transmit_Command(void);
+
+extern volatile unsigned char serial_test_mode;
+extern void Set_Baud(unsigned char rate);
+extern volatile unsigned char baud_mode;
+
+void Switches_Process(void){
+// This function calls the individual Switch Functions
+ Switch1_Process();
+ Switch2_Process();
+}
+
+void Switch1_Process(void){
+
+    if (serial_test_mode) {
+        // If SW1 is pressed (active low)
+        if (!(P4IN & SW1)) {
+            sw1_position = PRESSED;
+            Transmit_Command();
+            return;   // <-- do NOT run Project 6 logic
+        }
+    }
+// Switch 1 Configurations (Port P4 Pin 1)
+  if (okay_switch1 && sw1_position){
+    if (!(P4IN & SW1)){              // button pressed (active low)
+      sw1_position = PRESSED;
+      okay_switch1 = NOT_OKAY;
+      count_debounce_SW1 = DEBOUNCE_RESTART;
+
+      // -----------------------------------------------------------------
+      // PROJECT 06 IMPLEMENTATION: Start Black Line Follow
+      // -----------------------------------------------------------------
+
+      event = BLACK_LINE_FOLLOW; // Set the main event to Black Line Follow
+      search_state = SEARCH;     // Set the black line state machine to the initial SEARCH state
+
+      // Start the required 1.0 second delay before moving (Verification 6)
+      delay_start = DELAY_START_TICKS; // Use the macro for 1.0s
+
+
+            strcpy(display_line[0], "  P6 RUN  ");  // Line 1 (P6 RUN)
+            strcpy(display_line[1], " L:       ");  // Line 2 (Left Detector Placeholder)
+            strcpy(display_line[2], " R:       ");  // Line 3 (Right Detector Placeholder)
+            strcpy(display_line[3], " 1.0s DLY ");  // Line 4 (Status/Delay)
+            lcd_4line();
+
+      display_changed = TRUE;
+      // -----------------------------------------------------------------
+
+    }
+  }
+
+  // Debounce logic
+  if (count_debounce_SW1 <= DEBOUNCE_TIME){
+    count_debounce_SW1++;
+  } else {
+    okay_switch1 = OKAY;
+    if (P4IN & SW1){
+      sw1_position = RELEASED;
+    }
+  }
+}
+
+void Switch2_Process(void){
+    if (serial_test_mode) {
+        if (!(P2IN & SW2)) {
+            sw2_position = PRESSED;
+
+            if (baud_mode == BAUD_9600)
+                Set_Baud(BAUD_115200);
+            else
+                Set_Baud(BAUD_9600);
+
+            if (baud_mode == BAUD_9600)
+                strcpy(display_line[LINE3], "9600      ");
+            else
+                strcpy(display_line[LINE3], "115200    ");
+
+            update_string(display_line[LINE3], LINE3);
+
+            return;
+        }
+    }
+
+
+
+// Switch 2 Configurations (Port P2 Pin 3)
+ if (okay_switch2 && sw2_position){
+   if (!(P2IN & SW2)){              // button pressed (active low)
+     sw2_position = PRESSED;
+     okay_switch2 = NOT_OKAY;
+     count_debounce_SW2 = DEBOUNCE_RESTART;
+
+     // Run selected shape
+     if (event == BLACK_LINE_FOLLOW) {
+         event = STOPALL; // SW2: Stop the project
+     } else {
+         event = shape_on_screen; // Run the previously selected shape
+     }
+
+     lcd_4line();
+     display_changed = TRUE;
+   }
+ }
+
+ // Debounce logic
+  if (count_debounce_SW2 <= DEBOUNCE_TIME){
+    count_debounce_SW2++;
+  } else {
+    okay_switch2 = OKAY;
+    if (P2IN & SW2){
+      sw2_position = RELEASED;
+    }
+  }
+}

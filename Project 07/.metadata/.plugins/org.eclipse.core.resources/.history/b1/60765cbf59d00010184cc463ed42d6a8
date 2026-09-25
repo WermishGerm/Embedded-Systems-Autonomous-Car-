@@ -1,0 +1,138 @@
+//------------------------------------------------------------------------------
+// main.c
+//  Description: Main routine for Project 07 – Black Line Circle Navigation
+//
+//  Jim Carlson (base code)
+//  Updated for Project 07 by ChatGPT
+//------------------------------------------------------------------------------
+
+
+#include "msp430.h"
+#include <string.h>
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+#include "ports.h"
+
+// ---------------- PROTOTYPES ----------------
+void main(void);
+void Init_Conditions(void);
+void Display_Process(void);
+void Init_LEDs(void);
+void stopall(void);
+void moveforward(void);
+void Carlson_StateMachine(void);
+
+void wait_case(void);
+void start_case(void);
+void run_case(void);
+void end_case(void);
+void Run_Straight(void);
+void Run_Circle(void);
+void Run_Figure8(void);
+void Run_Triangle(void);
+
+void Init_ADC(void);
+void LCD_update(void);
+void blackline_state(void);        // Project 06 only
+void calibration_state(void);      // NEW for Project 07
+void project07_circle_state(void); // NEW for Project 07
+
+
+// ---------------- GLOBALS ----------------
+volatile char slow_input_down;
+
+extern char display_line[FOURTH][ELEVENTH];
+extern char *display[FOURTH];
+
+unsigned char display_mode;
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+extern volatile unsigned int update_display_count;
+
+extern volatile unsigned int Time_Sequence;
+extern volatile char one_time;
+
+unsigned int test_value;
+volatile char control_state[7];
+unsigned int Last_Time_Sequence;
+
+unsigned int wheel_move;
+unsigned char forward;
+
+unsigned char event;       // MAIN STATE DRIVER
+unsigned int event_count;
+
+extern unsigned int cycle_time;    // from states.c
+extern unsigned int time_change;   // from states.c
+
+
+// ---------------- MAIN ----------------
+void main(void){
+
+    // ---------------- INITIALIZATION ----------------
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+    Init_Ports();
+    Init_Clocks();
+    Init_Conditions();
+    Init_LCD();
+    Init_Timers();
+    Init_ADC();
+    enable_interrupts();
+
+    // ---------------- INITIAL DISPLAY ----------------
+    strcpy(display_line[0], " PROJECT 7  ");
+    strcpy(display_line[1], " CAL w/SW1  ");
+    strcpy(display_line[2], "            ");
+    strcpy(display_line[3], "            ");
+
+    display_changed = TRUE;
+
+    wheel_move = 0;
+    forward = TRUE;
+
+    // Start in a neutral state (nothing running yet)
+    event = NONE;
+
+
+    // ---------------- MAIN LOOP ----------------
+    while(ALWAYS) {
+        strcpy(display_line[3], "            ");  // clear garbage
+        display_changed = TRUE;
+
+        // Original Carlson shape logic (Straight, Triangle, Circle, Figure-8)
+        // Still works if student wants to use old shape modes via SW2
+        Carlson_StateMachine();
+
+        // ---------------- SWITCH HANDLING ----------------
+        Switches_Process();
+
+        // ---------------- PROJECT 07 LOGIC ----------------
+
+        // Step 1: Calibration Process (SW1 triggers)
+        if(event >= CALIBRATE_MODE && event <= CAL_DONE){
+            calibration_state();
+        }
+
+        // Step 2: Main Circle Navigation Routine
+        if(event >= INTERCEPT && event <= STOP_STATE){
+            project07_circle_state();
+        }
+
+
+        // ---------------- BLACKLINE STATE FROM PROJECT 06 ----------------
+        // Only runs if event == BLACK_LINE_FOLLOW (Project 06 mode)
+        if(event == BLACK_LINE_FOLLOW){
+            blackline_state();
+            Update_Blackline_Display();
+        }
+
+        // ---------------- LCD + TIMERS ----------------
+        LCD_update();
+        Display_Process();
+
+        // Toggle test probe
+        P3OUT ^= TEST_PROBE;
+    }
+}

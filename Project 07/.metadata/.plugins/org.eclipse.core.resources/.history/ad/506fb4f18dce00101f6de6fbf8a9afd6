@@ -1,0 +1,58 @@
+#ifndef MACROS_H_
+#define MACROS_H_
+
+// ======================================================
+// GENERAL
+// ======================================================
+#define ALWAYS            (1)
+#define TRUE              (1)
+#define FALSE             (0)
+
+#define FOURTH            (4)
+#define ELEVENTH          (11)
+
+#define MCLK_FREQ_MHZ     (8)
+
+// ======================================================
+// EVENTS
+// ======================================================
+#define BLACK_LINE_FOLLOW ('B')
+#define STOPALL           (8)
+
+// ======================================================
+// PROJECT 7 STATES
+// ======================================================
+#define BL_CAL_AMBIENT   (20)
+#define BL_CAL_WHITE     (21)
+#define BL_CAL_BLACK     (22)
+#define BL_INTERCEPT     (23)
+#define BL_TURN_ALIGN    (24)
+#define BL_FOLLOW        (25)
+#define BL_EXIT          (27)
+#define BL_STOPPED       (28)
+
+#define BL_MAX_LAPS      (2)
+
+// ======================================================
+// STEERING CONSTANTS
+// ======================================================
+#define STEER_BASE       (300)
+#define STEER_GAIN       (0.20f)
+#define STEER_MIN        (150)
+#define STEER_MAX        (600)
+
+#define PHASE_FILTER_MS  (30)
+
+// ======================================================
+// BUTTONS
+// ======================================================
+#define PRESSED  (0)
+#define RELEASED (1)
+
+#define OKAY     (1)
+#define NOT_OKAY (0)
+
+#define DEBOUNCE_TIME    (100)
+#define DEBOUNCE_RESTART (0)
+
+#endif

@@ -1,0 +1,23 @@
+/*
+ * serial.h
+ *
+ *  Created on: Dec 4, 2025
+ *      Author: jcont
+ */
+
+#ifndef SERIAL_H_
+#define SERIAL_H_
+
+#include <msp430.h>
+
+// ----------------------
+// Global variables
+// ----------------------
+extern volatile char usb_rx;       // Last received char on UCA1
+
+// ----------------------
+// Function Prototypes
+// ----------------------
+void Init_Serial_UCA1(void);       // Initialize UCA1 for PC backchannel
+
+#endif /* SERIAL_H_ */

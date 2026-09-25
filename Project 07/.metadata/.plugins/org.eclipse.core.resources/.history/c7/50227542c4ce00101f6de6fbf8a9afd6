@@ -1,0 +1,136 @@
+//------------------------------------------------------------------------------
+// Display.c
+// PROJECT 7 – LCD display system
+//
+// This module refreshes the LCD using the 4-line buffer.
+// It displays:
+//   • Project 7 state text
+//   • ADC left/right detector values
+//   • 0.2s timer display
+//
+// LCD object file (LCD.obj) is unchanged.
+//------------------------------------------------------------------------------
+
+#include "msp430.h"
+#include <string.h>
+#include <stdio.h>
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+
+//---------------------------------------------------------------------------
+// EXTERN GLOBALS
+//---------------------------------------------------------------------------
+extern char display_line[4][11];
+extern char *display[4];
+
+extern volatile unsigned char display_changed;
+
+extern unsigned char p7_state;
+extern float p7_timer;
+
+extern unsigned int ADC_Left_Detect;
+extern unsigned int ADC_Right_Detect;
+
+//---------------------------------------------------------------------------
+// PROTOTYPES
+//---------------------------------------------------------------------------
+static void Display_UpdateText(void);
+
+//===========================================================================
+// MAIN DISPLAY PROCESS (called from main loop)
+//===========================================================================
+void Display_Process(void) {
+
+    if (display_changed) {
+        Display_UpdateText();
+        lcd_4line();            // Write buffer to physical LCD
+        display_changed = FALSE;
+    }
+}
+
+//===========================================================================
+// UPDATE THE LCD TEXT BASED ON CURRENT STATE + ADC + TIMER
+//===========================================================================
+static void Display_UpdateText(void) {
+
+    //------------------------------------------------------------------
+    // LINE 1: STATE TEXT
+    //------------------------------------------------------------------
+    switch (p7_state) {
+
+    case P7_CAL_AMBIENT:
+        strcpy(display_line[0], "CAL AMBI  ");
+        break;
+
+    case P7_CAL_WHITE:
+        strcpy(display_line[0], "CAL WHITE ");
+        break;
+
+    case P7_CAL_BLACK:
+        strcpy(display_line[0], "CAL BLACK ");
+        break;
+
+    case P7_READY:
+        strcpy(display_line[0], "READY P7  ");
+        break;
+
+    case P7_INTERCEPT:
+        strcpy(display_line[0], "INTERCEPT ");
+        break;
+
+    case P7_TURN_ALIGN:
+        strcpy(display_line[0], "TURN LEFT ");
+        break;
+
+    case P7_CIRCLE1:
+        strcpy(display_line[0], "CIRCLE 1  ");
+        break;
+
+    case P7_CIRCLE2:
+        strcpy(display_line[0], "CIRCLE 2  ");
+        break;
+
+    case P7_TURN_IN:
+        strcpy(display_line[0], "TURN-IN   ");
+        break;
+
+    case P7_STOPPED:
+        strcpy(display_line[0], "STOPPED   ");
+        break;
+
+    default:
+        strcpy(display_line[0], "UNKNOWN   ");
+        break;
+    }
+
+    //------------------------------------------------------------------
+    // LINE 2: LEFT ADC VALUE
+    //------------------------------------------------------------------
+    {
+        char buff[11];
+        sprintf(buff, "L:%4u   ", ADC_Left_Detect);
+        strcpy(display_line[1], buff);
+    }
+
+    //------------------------------------------------------------------
+    // LINE 3: RIGHT ADC VALUE
+    //------------------------------------------------------------------
+    {
+        char buff[11];
+        sprintf(buff, "R:%4u   ", ADC_Right_Detect);
+        strcpy(display_line[2], buff);
+    }
+
+    //------------------------------------------------------------------
+    // LINE 4: TIMER VALUE (ONLY IN MOTION / STOPPED)
+    //------------------------------------------------------------------
+    {
+        char buff[11];
+
+        // Timer freezes when STOPPED but still displayed
+        sprintf(buff, "T:%5.1f ", p7_timer);
+
+        strcpy(display_line[3], buff);
+    }
+}

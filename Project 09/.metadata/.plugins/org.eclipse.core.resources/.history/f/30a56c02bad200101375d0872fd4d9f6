@@ -1,0 +1,150 @@
+// ============================================================================
+// command_parser.c — Project 09 Command Parser
+// Handles both secure (^1234F5678) and insecure commands (F2, R90, L45 B2)
+// Author: Juan Contreras-Flores
+// ============================================================================
+
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+#include "command_parser.h"
+#include "movement.h"
+#include "LCD.h"
+#include "macros.h"
+#include "ports.h"
+#include "LCD.h"
+
+// Use the global LCD buffers
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+// ============================================================================
+// Initialize parser (unused now but may expand)
+// ============================================================================
+void command_parser_init(void) {
+    // nothing required yet
+}
+
+// ============================================================================
+// Helper: trim whitespace
+// ============================================================================
+static void trim(char *s) {
+    if (!s) return;
+
+    // remove leading spaces
+    while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+
+    // remove trailing spaces
+    char *end = s + strlen(s) - 1;
+    while (end > s && (*end==' ' || *end=='\n' || *end=='\r' || *end=='\t'))
+        *end-- = '\0';
+}
+
+// ============================================================================
+// SECURE COMMAND FORMAT
+// ^1234F5678
+// ^   - Start token
+// 1234 – PIN (must match SECURE_PIN)
+// F   – direction
+// 5678 – time value
+// ============================================================================
+static uint8_t parse_secure(char *s) {
+
+    if (strlen(s) < 7) return 0; // too short
+
+    if (s[0] != '^') return 0;
+
+    // Extract PIN
+    char pin_buff[8];
+    strncpy(pin_buff, &s[1], 4);
+    pin_buff[4] = '\0';
+
+    if (strcmp(pin_buff, SECURE_PIN) != 0) {
+
+        // Clear all lines
+        strcpy(display_line[0], "          ");
+        strcpy(display_line[1], " BAD PIN ");
+        strcpy(display_line[2], "          ");
+        strcpy(display_line[3], "          ");
+
+        display_changed = TRUE;
+        update_display  = TRUE;
+
+        // Show big font (uses middle line content)
+        lcd_BIG_mid();     // <-- NO ARGUMENT
+
+        return 1;          // handled but invalid
+    }
+
+    // Direction
+    char direction = s[5];
+    if (!(direction=='F' || direction=='B' || direction=='L' || direction=='R'))
+        return 1;
+
+    // Value
+    uint16_t val = atoi(&s[6]);
+    if (val == 0) return 1;
+
+    movement_queue_push(direction, val);
+    return 1;
+}
+
+// ============================================================================
+// INSECURE COMMANDS
+// Supports:
+// "F2"
+// "R90"
+// "L45 B2 R90"
+// ============================================================================
+static uint8_t parse_insecure(char *s) {
+    char buffer[32];
+    strncpy(buffer, s, sizeof(buffer));
+    buffer[31] = '\0';
+
+    char *tok = strtok(buffer, " ");
+    while (tok) {
+
+        if (strlen(tok) < 2) {
+            tok = strtok(NULL, " ");
+            continue;
+        }
+
+        char direction = tok[0];
+        if (!(direction=='F' || direction=='B' || direction=='L' || direction=='R')) {
+            tok = strtok(NULL, " ");
+            continue;
+        }
+
+        uint16_t val = atoi(&tok[1]);
+        if (val > 0) {
+            movement_queue_push(direction, val);
+        }
+
+        tok = strtok(NULL, " ");
+    }
+    return 1;
+}
+
+// ============================================================================
+// MAIN PARSE FUNCTION
+// Called by UART/ESP32/WiFi driver
+// ============================================================================
+void command_parser_process(char *input) {
+    if (!input || strlen(input) == 0)
+        return;
+
+    trim(input);
+
+    if (strlen(input) == 0)
+        return;
+
+    // Check secure format
+    if (input[0] == '^') {
+        if (parse_secure(input))
+            return;
+    }
+
+    // If not secure, treat as insecure
+    parse_insecure(input);
+}

@@ -1,0 +1,79 @@
+/*
+ * interrupts_ports.c
+ *
+ *  Created on: Oct 15, 2025
+ *      Author: jcont
+ */
+
+#include "msp430.h"
+#include "ports.h"
+#include "macros.h"
+#include "LCD.h"
+#include <string.h>
+
+extern volatile unsigned char display_changed;
+extern char display_line[4][11];
+extern volatile unsigned char event;
+
+// Backlight toggle
+volatile unsigned char backlight_state = 1;
+
+volatile unsigned char debounce_SW1 = 0; // debounce in progress
+volatile unsigned char debounce_SW2 = 0;
+volatile unsigned int debounce_count_SW1 = 0;
+volatile unsigned int debounce_count_SW2 = 0;
+
+void Init_Switches(void){
+    // SW1 - P4.1
+    P4DIR &= ~SW1;     // Input
+    P4REN |= SW1;      // Pull-up
+    P4OUT |= SW1;
+    P4IES |= SW1;      // High-to-low edge
+    P4IFG &= ~SW1;
+    P4IE  |= SW1;      // Enable interrupt
+
+    // SW2 - P2.3
+    P2DIR &= ~SW2;
+    P2REN |= SW2;
+    P2OUT |= SW2;
+    P2IES |= SW2;      // High-to-low
+    P2IFG &= ~SW2;
+    P2IE  |= SW2;      // Enable interrupt
+}
+
+//-------------------- SW1 ISR --------------------
+#pragma vector=PORT4_VECTOR
+__interrupt void Port4_ISR(void){
+    if(P4IFG & SW1){          // SW1 pressed
+        debounce_SW1 = 1;     // start debounce
+        debounce_count_SW1 = 0;
+        P4IE &= ~SW1;         // disable SW1 interrupt during debounce
+
+        strcpy(display_line[3],"Switch 1");
+        display_changed = 1;
+
+        // Turn off backlight while pressed
+        P6OUT &= ~LCD_BACKLITE;
+
+        P4IFG &= ~SW1;        // clear interrupt flag
+    }
+}
+//-------------------- SW2 ISR --------------------
+#pragma vector=PORT2_VECTOR
+__interrupt void Port2_ISR(void){
+    if(P2IFG & SW2){          // SW2 pressed
+        debounce_SW2 = 1;     // start debounce
+        debounce_count_SW2 = 0;
+        P2IE &= ~SW2;         // disable SW2 interrupt during debounce
+
+        strcpy(display_line[3],"Switch 2");
+        display_changed = 1;
+
+        // Turn off backlight while pressed
+        P6OUT &= ~LCD_BACKLITE;
+
+        P2IFG &= ~SW2;        // clear interrupt flag
+    }
+}
+
+

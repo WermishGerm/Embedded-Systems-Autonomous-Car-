@@ -1,0 +1,204 @@
+// ============================================================================
+// MOVEMENT.C  —  Unified PWM Movement Engine + Legacy Wheel Controls
+// Replaces: movement.c + wheels.c
+// ============================================================================
+
+#include <stdint.h>
+#include "msp430.h"
+
+#include "functions.h"
+#include "macros.h"
+#include "ports.h"
+#include "LCD.h"
+
+// ============================================================================
+// MOVEMENT QUEUE (Optional future use)
+// ============================================================================
+MoveCmd move_queue[MOVE_QUEUE_SIZE];
+uint8_t move_q_head = 0;
+uint8_t move_q_tail = 0;
+
+// ---------------------------------------------------------------------------
+// PUSH INTO QUEUE
+// ---------------------------------------------------------------------------
+static void movement_queue_push(char direction, uint16_t value) {
+    uint8_t next = (move_q_head + 1) % MOVE_QUEUE_SIZE;
+    if (next == move_q_tail)
+        return; // queue full, ignore
+    move_queue[move_q_head].direction = direction;
+    move_queue[move_q_head].value = value;
+    move_q_head = next;
+}
+
+// ============================================================================
+// PWM SETUP
+// ============================================================================
+void movement_pwm_init(void) {
+
+    // ----------------------
+    // TIMER B3 — PWM Wheels
+    // ----------------------
+    TB3CTL = TBSSEL__SMCLK | MC__UP | TBCLR;
+    TB3CCR0 = PWM_PERIOD;
+
+    // Left forward
+    TB3CCTL1 = OUTMOD_7;
+    // Right forward
+    TB3CCTL2 = OUTMOD_7;
+    // Left reverse
+    TB3CCTL3 = OUTMOD_7;
+    // Right reverse
+    TB3CCTL4 = OUTMOD_7;
+
+    // Backlight dimming
+    TB3CCTL5 = OUTMOD_7;
+
+    // Pins
+    P6SEL0 |= (BIT0 | BIT1 | BIT2 | BIT3 | BIT4 | BIT5);
+}
+
+// ============================================================================
+// LOW-LEVEL PWM CONTROL HELPERS
+// ============================================================================
+static void wheels_off(void) {
+    LEFT_FORWARD_SPEED  = 0;
+    RIGHT_FORWARD_SPEED = 0;
+    LEFT_REVERSE_SPEED  = 0;
+    RIGHT_REVERSE_SPEED = 0;
+}
+
+static void wheels_forward(uint16_t speed) {
+    LEFT_FORWARD_SPEED  = speed;
+    RIGHT_FORWARD_SPEED = speed;
+    LEFT_REVERSE_SPEED  = 0;
+    RIGHT_REVERSE_SPEED = 0;
+}
+
+static void wheels_reverse(uint16_t speed) {
+    LEFT_FORWARD_SPEED  = 0;
+    RIGHT_FORWARD_SPEED = 0;
+    LEFT_REVERSE_SPEED  = speed;
+    RIGHT_REVERSE_SPEED = speed;
+}
+
+static void wheels_left(uint16_t speed) {
+    LEFT_FORWARD_SPEED = 0;
+    RIGHT_FORWARD_SPEED = speed;
+    LEFT_REVERSE_SPEED = speed;
+    RIGHT_REVERSE_SPEED = 0;
+}
+
+static void wheels_right(uint16_t speed) {
+    LEFT_FORWARD_SPEED = speed;
+    RIGHT_FORWARD_SPEED = 0;
+    LEFT_REVERSE_SPEED = 0;
+    RIGHT_REVERSE_SPEED = speed;
+}
+
+// ============================================================================
+// NEW MOVEMENT ENGINE — EXECUTES COMMANDS LIKE "F10", "R45", "S"
+// ============================================================================
+void movement_init(void) {
+    wheels_off();
+}
+
+// Main update, called every loop
+void movement_update(void) {
+    // Future: timed motion or queued commands
+}
+
+// Execute a single direction command
+void movement_execute_command(char direction, uint16_t value) {
+
+    wheels_off();
+
+    switch (direction) {
+    case 'F':  // forward
+        wheels_forward(PWM_SPEED);
+        break;
+
+    case 'B':  // backward
+        wheels_reverse(PWM_SPEED);
+        break;
+
+    case 'L':  // left turn
+        wheels_left(PWM_SPEED);
+        break;
+
+    case 'R':  // right turn
+        wheels_right(PWM_SPEED);
+        break;
+
+    case 'S':  // stop
+        wheels_off();
+        break;
+
+    case 'X':  // emergency stop
+        wheels_off();
+        break;
+
+    default:
+        // unknown command
+        break;
+    }
+
+    movement_display_big(direction, value);
+}
+
+// Execute a full ASCII command like "F10"
+void movement_execute_string(char *cmd) {
+    if (!cmd || !cmd[0]) return;
+
+    char d = cmd[0];
+    uint16_t v = 0;
+
+    if (cmd[1])
+        v = atoi(&cmd[1]);
+
+    movement_execute_command(d, v);
+}
+
+// ============================================================================
+// BIG FONT DISPLAY FOR MOVEMENT COMMANDS
+// ============================================================================
+void movement_display_big(char direction, uint16_t value) {
+
+    char buffer[11];
+
+    // Line 0: Command
+    snprintf(buffer, sizeof(buffer), " Cmd: %c  ", direction);
+    strcpy(display_line[0], buffer);
+
+    // Line 1: Value
+    snprintf(buffer, sizeof(buffer), " Val:%3u ", value);
+    strcpy(display_line[1], buffer);
+
+    strcpy(display_line[2], " Movement ");
+    strcpy(display_line[3], "  Active  ");
+
+    display_changed = 1;
+    update_display = 1;
+}
+
+// ============================================================================
+// LEGACY MOVEMENT API  —  Carlson Style (wheels.c)
+// ============================================================================
+void stopall(void) {
+    wheels_off();
+}
+
+void moveforward(void) {
+    wheels_forward(PWM_SPEED);
+}
+
+void movereverse(void) {
+    wheels_reverse(PWM_SPEED);
+}
+
+void spin_clockwise(void) {
+    wheels_right(PWM_SPEED);
+}
+
+void spin_counterclockwise(void) {
+    wheels_left(PWM_SPEED);
+}

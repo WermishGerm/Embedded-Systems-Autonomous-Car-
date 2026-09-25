@@ -1,0 +1,58 @@
+/*
+ * serial.c
+ *
+ *  Created on: Dec 4, 2025
+ *      Author: jcont
+ */
+
+#include  "msp430.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+#include  "ports.h"
+#include "serial.h"
+
+volatile char usb_rx = 0;    // Last received character on UCA1
+
+void Init_Serial_UCA1(void) {
+    UCA1CTLW0 = 0;
+    UCA1CTLW0 |= UCSWRST;        // Put eUSCI in reset
+    UCA1CTLW0 |= UCSSEL__SMCLK;  // SMCLK = 8 MHz
+
+    // UART settings: 8N1
+    UCA1CTLW0 &= ~UCMSB;         // LSB first
+    UCA1CTLW0 &= ~UCSPB;         // 1 stop bit
+    UCA1CTLW0 &= ~UCPEN;         // No parity
+    UCA1CTLW0 &= ~UCSYNC;        // UART mode
+
+    // 115200 baud settings from lecture table:
+    // BRW = 4, MCTLW = 0x5551
+    UCA1BRW = 4;
+    UCA1MCTLW = 0x5551;
+
+    UCA1CTLW0 &= ~UCSWRST;       // Release reset
+
+    UCA1IE |= UCRXIE;            // Enable RX interrupt
+
+    UCA1TXBUF = 0x00;            // "Prime the pump"
+}
+
+
+#pragma vector = EUSCI_A1_VECTOR
+__interrupt void eUSCI_A1_ISR(void) {
+
+    switch(__even_in_range(UCA1IV, 0x08)) {
+
+    case 0:
+        break;
+
+    case 2:  // RXIFG
+        usb_rx = UCA1RXBUF;  // Read received character
+        UCA1TXBUF = usb_rx;  // Echo it right back
+        break;
+
+    case 4:  // TXIFG (not used here)
+        break;
+    }
+}

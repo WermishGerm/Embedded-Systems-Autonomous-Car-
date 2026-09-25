@@ -1,0 +1,471 @@
+#include "msp430.h"
+#include <string.h>
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+#include "ports.h"
+#include "switches.h"
+
+// ===================== ADC Inputs =====================
+extern unsigned int ADC_Left_Detect;
+extern unsigned int ADC_Right_Detect;
+
+// ===================== Display =========================
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+
+// ===================== Switches ========================
+extern volatile unsigned char sw1_pressed;
+
+// ===================== Timer ===========================
+extern volatile unsigned int timer_counter;
+
+// ===================== Project 7 State =================
+unsigned char p7_state = WAIT_START;
+
+// ===================== Calibration ======================
+unsigned int ambL=0, ambR=0;
+unsigned int whiteL=0, whiteR=0;
+unsigned int blackL=0, blackR=0;
+unsigned int thrL=2000, thrR=2000;
+
+// ===================== Laps ============================
+unsigned char lap_count = 0;
+unsigned char crossing = 0;
+unsigned int lap_start_time = 0;
+
+// ===================== Display Timer ===================
+unsigned int last_tick = 0;
+unsigned int t_count = 0;
+
+// ===================== HEX Conversion ==================
+char hexbuf[4];
+void HEXtoBCD(unsigned int v){
+  hexbuf[0] = '0' + v/1000; v%=1000;
+  hexbuf[1] = '0' + v/100;  v%=100;
+  hexbuf[2] = '0' + v/10;
+  hexbuf[3] = '0' + v%10;
+}
+
+// ===================== ADC on LCD ======================
+void showADC(void){
+  int i;
+
+  HEXtoBCD(ADC_Left_Detect);
+  for(i=0;i<4;i++) display_line[2][2+i] = hexbuf[i];
+
+  HEXtoBCD(ADC_Right_Detect);
+  for(i=0;i<4;i++) display_line[2][7+i] = hexbuf[i];
+}
+
+// ===================== Threshold Calculation ===========
+void compute_thresholds(void){
+  // Use 35% of the difference between white and black
+  thrL = whiteL + ((blackL - whiteL) * 35) / 100;
+  thrR = whiteR + ((blackR - whiteR) * 35) / 100;
+}
+
+// ===================== LCD Helpers =====================
+void clear_display_lines(void){
+  int i;
+  for(i=0;i<4;i++) memset(display_line[i], ' ', ELEVENTH);
+}
+
+void show_state_debug(unsigned char s){
+  display_line[0][10] = '0' + (s % 10);
+}
+
+void follow_line_pwm(void) {
+
+    int base = 500;      // slower forward speed
+    int minS = 350;      // minimum torque
+    int maxS = 900;
+
+    // STRONGER steering gain
+    int gain = 1;
+
+    int Lsig = ADC_Left_Detect  - thrL;
+    int Rsig = ADC_Right_Detect - thrR;
+
+    if(Lsig < 0) Lsig = 0;
+    if(Rsig < 0) Rsig = 0;
+
+    int diff = Lsig - Rsig;
+
+    // MUCH stronger adjust
+    int adjust = diff;   // (gain = 1 means full-strength correction)
+
+    int L = base - adjust;
+    int R = base + adjust;
+
+    // hard correction when one side sees strong black
+    if (ADC_Left_Detect > thrL * 1.2 && ADC_Right_Detect < thrR) {
+        LEFT_FORWARD_SPEED  = 350;
+        RIGHT_FORWARD_SPEED = 750;
+        return;
+    }
+
+    if (ADC_Right_Detect > thrR * 1.2 && ADC_Left_Detect < thrL) {
+        LEFT_FORWARD_SPEED  = 750;
+        RIGHT_FORWARD_SPEED = 350;
+        return;
+    }
+
+    // clip
+    if(L < minS) L = minS;
+    if(R < minS) R = minS;
+    if(L > maxS) L = maxS;
+    if(R > maxS) R = maxS;
+
+    LEFT_FORWARD_SPEED  = L;
+    RIGHT_FORWARD_SPEED = R;
+}
+
+
+
+// ===================== Lap Detection Flags ==============
+unsigned char detect_white(void){
+  return (ADC_Left_Detect < thrL && ADC_Right_Detect < thrR);
+}
+
+unsigned char detect_black_both(void){
+  return (ADC_Left_Detect > thrL && ADC_Right_Detect > thrR);
+}
+
+// ========================================================
+//                 PROJECT 7 STATE MACHINE
+// ========================================================
+void project7_state_machine(void){
+
+    // ----------------------------------------------------
+    // ALWAYS show ADC values
+    // ----------------------------------------------------
+    showADC();
+
+    // ----------------------------------------------------
+    // Display Timer (every 200 ms)
+    // ----------------------------------------------------
+    if((timer_counter - last_tick) >= 20){
+        int sec, tenths;
+        int i;
+
+        last_tick = timer_counter;
+        t_count++;
+
+        sec = t_count / 5;
+        tenths = t_count % 5;     // now correct (0–4 maps to tenths=0,2,4,6,8)
+
+        HEXtoBCD(sec);
+        for(i=0;i<4;i++) display_line[0][i] = hexbuf[i];
+
+        display_line[0][4] = '.';
+        display_line[0][5] = '0' + (tenths * 2);
+
+        display_changed = TRUE;
+        update_display = TRUE;
+    }
+
+    switch(p7_state){
+
+// =======================================================
+// 0 → WAIT FOR SW1
+// =======================================================
+case WAIT_START:
+    clear_display_lines();
+    strcpy(display_line[1], "PRESS SW1 ");
+    strcpy(display_line[3], "TO START  ");
+    P2OUT &= ~IR_LED;
+
+    display_changed = TRUE;
+    update_display = TRUE;
+
+    if(sw1_pressed){
+        sw1_pressed = 0;
+        __delay_cycles(500000);
+        p7_state = CAL_AMBIENT;
+        t_count = 0;
+        last_tick = timer_counter;
+    }
+    break;
+
+// =======================================================
+// 1 → CALIBRATE AMBIENT
+// =======================================================
+case CAL_AMBIENT:
+    clear_display_lines();
+    P2OUT &= ~IR_LED;   // emitter OFF
+
+    ambL = ADC_Left_Detect;
+    ambR = ADC_Right_Detect;
+
+    strcpy(display_line[1], "AMBIENT   ");
+
+    // Show values on lines 2 and 3
+    strcpy(display_line[2], "L:");
+    HEXtoBCD(ambL);
+    memcpy(&display_line[2][2], hexbuf, 4);
+
+    strcpy(display_line[3], "R:");
+    HEXtoBCD(ambR);
+    memcpy(&display_line[3][2], hexbuf, 4);
+
+    display_changed = TRUE;
+    update_display  = TRUE;
+
+    __delay_cycles(1500000);   // pause so user can read
+
+    p7_state = CAL_WHITE;
+    break;
+
+
+// =======================================================
+// 2 → CALIBRATE WHITE
+// =======================================================
+case CAL_WHITE:
+    clear_display_lines();
+    P2OUT |= IR_LED;   // emitter ON
+
+    __delay_cycles(50000);  // small settle delay
+    whiteL = ADC_Left_Detect;
+    whiteR = ADC_Right_Detect;
+
+    strcpy(display_line[1], "WHITE     ");
+
+    strcpy(display_line[2], "L:");
+    HEXtoBCD(whiteL);
+    memcpy(&display_line[2][2], hexbuf, 4);
+
+    strcpy(display_line[3], "R:");
+    HEXtoBCD(whiteR);
+    memcpy(&display_line[3][2], hexbuf, 4);
+
+    display_changed = TRUE;
+    update_display  = TRUE;
+
+    __delay_cycles(1500000);
+
+    p7_state = CAL_WAIT_BLACK;
+    break;
+
+
+// =======================================================
+// 3 → WAIT FOR USER TO MOVE TO BLACK
+// =======================================================
+case CAL_WAIT_BLACK:
+    clear_display_lines();
+    strcpy(display_line[1], "MOVE TO   ");
+    strcpy(display_line[3], "BLACK/SW1 ");
+    display_changed = TRUE;
+
+    if(sw1_pressed){
+        sw1_pressed = 0;
+        __delay_cycles(300000);
+        p7_state = CAL_BLACK;
+    }
+    break;
+
+// =======================================================
+// 4 → CALIBRATE BLACK + COMPUTE THRESHOLDS
+// =======================================================
+case CAL_BLACK:
+{
+    clear_display_lines();
+
+    blackL = ADC_Left_Detect;
+    blackR = ADC_Right_Detect;
+
+    compute_thresholds();   // sets thrL, thrR
+
+    strcpy(display_line[1], "BLACK L:");
+    HEXtoBCD(blackL);
+    memcpy(&display_line[1][8], hexbuf, 4);
+
+    strcpy(display_line[2], "BLACK R:");
+    HEXtoBCD(blackR);
+    memcpy(&display_line[2][8], hexbuf, 4);
+
+    strcpy(display_line[3], "THR L/R ");
+
+    // print thresholds side-by-side
+    HEXtoBCD(thrL);
+    display_line[3][8] = hexbuf[2];
+    display_line[3][9] = hexbuf[3];
+    display_line[3][6] = '/';
+
+    HEXtoBCD(thrR);
+    display_line[3][10] = hexbuf[3];
+
+    display_changed = TRUE;
+    update_display  = TRUE;
+
+    __delay_cycles(2500000);
+
+    lap_count = 0;
+    crossing = 0;
+
+    p7_state = WAIT_IN_CENTER;
+}
+break;
+
+
+// =======================================================
+// 5 → WAIT IN CENTER FOR FINAL START
+// =======================================================
+case WAIT_IN_CENTER:
+    clear_display_lines();
+    strcpy(display_line[1], "IN CENTER ");
+    strcpy(display_line[3], "PRESS SW1 ");
+    display_changed = TRUE;
+
+    if(sw1_pressed){
+        sw1_pressed = 0;
+        __delay_cycles(400000);
+        p7_state = INTERCEPT;
+        P2OUT |= IR_LED;
+    }
+    break;
+
+// =======================================================
+// 6 → DRIVE FORWARD UNTIL BLACK DETECTED
+// =======================================================
+case INTERCEPT:
+    clear_display_lines();
+    strcpy(display_line[1], "INTERCEPT ");
+    display_changed = TRUE;
+
+    moveforward();
+
+    if(detect_black_both()){
+        stopall();
+        __delay_cycles(600000);
+        p7_state = TURN_ALIGN;
+    }
+    break;
+
+// =======================================================
+// 7 → TURN CCW UNTIL BOTH BLACK
+// =======================================================
+case TURN_ALIGN:
+    clear_display_lines();
+    strcpy(display_line[1], "ALIGN CCW ");
+    display_changed = TRUE;
+
+    // CCW = spin_counterclockwise()
+    spin_counterclockwise();
+
+    if(detect_black_both()){
+        stopall();
+        __delay_cycles(400000);
+        lap_start_time = timer_counter;
+        p7_state = CIRCLE1;
+    }
+    break;
+
+// =======================================================
+// 8 → LAP 1 FOLLOWING (PWM)
+// =======================================================
+case CIRCLE1:
+{
+    clear_display_lines();
+    strcpy(display_line[1], "LAP 1     ");
+    display_changed = TRUE;
+
+    follow_line_pwm();
+
+    // Start of white gap
+    if(detect_white() && !crossing){
+        crossing = 1;
+        lap_start_time = timer_counter;
+    }
+
+    // Detect return to black after white gap
+    if(crossing && detect_black_both()){
+        // Reject too-short gaps (noise)
+        if((timer_counter - lap_start_time) > 50){
+            crossing = 0;
+            stopall();
+            __delay_cycles(800000);
+            p7_state = CIRCLE2;
+        }
+    }
+
+    // BACKUP METHOD: too long without lap → fail-safe
+    if((timer_counter - lap_start_time) > 4000){
+        crossing = 0;
+        stopall();
+        __delay_cycles(800000);
+        p7_state = CIRCLE2;
+    }
+}
+break;
+
+// =======================================================
+// 9 → LAP 2 FOLLOWING (PWM)
+// =======================================================
+case CIRCLE2:
+{
+    clear_display_lines();
+    strcpy(display_line[1], "LAP 2     ");
+    display_changed = TRUE;
+
+    follow_line_pwm();
+
+    if(detect_white() && !crossing){
+        crossing = 1;
+        lap_start_time = timer_counter;
+    }
+
+    if(crossing && detect_black_both()){
+        if((timer_counter - lap_start_time) > 50){
+            crossing = 0;
+            stopall();
+            __delay_cycles(800000);
+            p7_state = ENTER_CENTER;
+        }
+    }
+
+    if((timer_counter - lap_start_time) > 4000){
+        crossing = 0;
+        stopall();
+        __delay_cycles(800000);
+        p7_state = ENTER_CENTER;
+    }
+}
+break;
+
+// =======================================================
+// 10 → ENTER THE CENTER
+// =======================================================
+case ENTER_CENTER:
+    clear_display_lines();
+    strcpy(display_line[1], "CENTERING ");
+    display_changed = TRUE;
+
+    // Step 1: CCW turn off the circle
+    turn_in();
+    __delay_cycles(800000);
+
+    // Step 2: Move forward until fully white
+    moveforward();
+
+    __delay_cycles(800000);
+
+        stopall();
+        P2OUT &= ~IR_LED;
+        __delay_cycles(500000);
+        p7_state = STOPPED;
+    break;
+
+// =======================================================
+// 11 → STOPPED
+// =======================================================
+case STOPPED:
+    clear_display_lines();
+    strcpy(display_line[1], "STOPPED   ");
+    display_changed = TRUE;
+    stopall();
+    break;
+
+    } // end switch
+}

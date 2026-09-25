@@ -1,0 +1,68 @@
+#include  "msp430.h"
+#include "ports.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+
+
+void stopall(void){
+P6OUT &= ~L_FORWARD;
+P6OUT &= ~R_FORWARD;
+P6OUT &= ~L_REVERSE;
+P6OUT &= ~R_REVERSE;
+}
+
+void moveforward(void){
+stopall();
+P6OUT |= L_FORWARD;
+P6OUT |= R_FORWARD;
+}
+
+void movereverse(void){
+stopall();
+P6OUT |= L_REVERSE;
+P6OUT |= R_REVERSE;
+}
+
+void spin_clockwise(void){
+stopall();
+P6OUT |= L_FORWARD;
+P6OUT |= R_REVERSE;
+}
+
+void spin_counterclockwise(void){
+stopall();
+P6OUT |= R_FORWARD;
+P6OUT |= L_REVERSE;
+}
+
+// ---------------------------------------------------------------
+// SLOW LEFT WHEEL  (used to correct leftward drift in Project 7)
+// Left wheel pulses; right wheel stays forward
+// ---------------------------------------------------------------
+void slow_left_wheel(void){
+    stopall();
+    P6OUT |= R_FORWARD;   // right motor full
+    __delay_cycles(5000); // small pulse
+    P6OUT &= ~R_FORWARD;
+
+    P6OUT |= L_FORWARD;   // left motor slight
+    __delay_cycles(2000);
+    P6OUT &= ~L_FORWARD;
+}
+
+// ---------------------------------------------------------------
+// SLOW RIGHT WHEEL  (used to correct rightward drift in Project 7)
+// Right wheel pulses; left wheel stays forward
+// ---------------------------------------------------------------
+void slow_right_wheel(void){
+    stopall();
+    P6OUT |= L_FORWARD;   // left motor full
+    __delay_cycles(5000);
+    P6OUT &= ~L_FORWARD;
+
+    P6OUT |= R_FORWARD;   // right motor slight
+    __delay_cycles(2000);
+    P6OUT &= ~R_FORWARD;
+}

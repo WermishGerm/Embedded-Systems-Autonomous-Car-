@@ -1,0 +1,284 @@
+#include "msp430.h"
+#include <string.h>
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+#include "ports.h"
+#include "switches.h"
+
+// ================================================================
+//  GLOBAL ADC EXTERNALS
+// ================================================================
+extern unsigned int ADC_Left_Detect;
+extern unsigned int ADC_Right_Detect;
+
+// ================================================================
+//  DISPLAY SYSTEM EXTERNALS
+// ================================================================
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+
+// ================================================================
+//  SWITCH FLAGS
+// ================================================================
+extern volatile unsigned char sw1_pressed;
+
+// ================================================================
+//  TIMER FROM ISR (increments every 10ms)
+// ================================================================
+extern volatile unsigned int timer_counter;
+
+unsigned char p7_state = WAIT_START;
+
+// ================================================================
+//  CALIBRATION VARIABLES
+// ================================================================
+unsigned int ambL=0, ambR=0;
+unsigned int whiteL=0, whiteR=0;
+unsigned int blackL=0, blackR=0;
+unsigned int thrL=2000, thrR=2000;
+
+// ================================================================
+//  LAP VARIABLES
+// ================================================================
+unsigned char lap_count = 0;
+unsigned char crossing = 0;
+
+// ================================================================
+//  TIMER FOR 200ms DISPLAY
+// ================================================================
+unsigned int last_tick = 0;
+unsigned int t_count = 0;
+
+// ================================================================
+//  HEX to ASCII helper
+// ================================================================
+char hexbuf[4];
+void HEXtoBCD(unsigned int v){
+    hexbuf[0] = '0' + v/1000; v%=1000;
+    hexbuf[1] = '0' + v/100;  v%=100;
+    hexbuf[2] = '0' + v/10;
+    hexbuf[3] = '0' + v%10;
+}
+
+// ================================================================
+//  Show ADC values on LCD
+// ================================================================
+void showADC(void){
+    int i;
+    HEXtoBCD(ADC_Left_Detect);
+    for(i=0;i<4;i++) display_line[2][2+i] = hexbuf[i];
+    HEXtoBCD(ADC_Right_Detect);
+    for(i=0;i<4;i++) display_line[2][7+i] = hexbuf[i];
+}
+
+// ================================================================
+//  Threshold Computation
+// ================================================================
+void compute_thresholds(void){
+    thrL = whiteL + ((blackL - whiteL) * 35) / 100;
+    thrR = whiteR + ((blackR - whiteR) * 35) / 100;
+}
+
+void clear_display_lines(void) {
+    for (unsigned int i = 0; i < 4; i++) {
+        memset(display_line[i], ' ', ELEVENTH);
+    }
+}
+
+void show_state_debug(unsigned char s) {
+    display_line[0][9] = '0' + (s / 10);
+    display_line[0][10] = '0' + (s % 10);
+}
+
+void project7_state_machine(void){
+    showADC();
+    if((timer_counter - last_tick) >= 20){
+        int i;
+        unsigned int sec = t_count / 5;
+        unsigned int tenths = (t_count % 5) * 2;
+        last_tick = timer_counter;
+        t_count++;
+        HEXtoBCD(sec);
+        for(i=0;i<4;i++) display_line[0][i] = hexbuf[i];
+        display_line[0][4] = '.';
+        display_line[0][5] = '0' + (tenths/2);
+        display_changed = TRUE;
+        update_display = TRUE;
+    }
+
+    switch(p7_state){
+    case WAIT_START:
+        clear_display_lines();
+        strcpy(display_line[1], "PRESS SW1 ");
+        strcpy(display_line[3], "TO START  ");
+        show_state_debug(WAIT_START);
+        display_changed = TRUE;
+        update_display = TRUE;
+        if(sw1_pressed){
+            sw1_pressed = 0;
+            __delay_cycles(1000000);
+            p7_state = CAL_AMBIENT;
+            t_count = 0;
+            last_tick = timer_counter;
+        }
+        break;
+
+    case CAL_AMBIENT:
+        clear_display_lines();
+        show_state_debug(CAL_AMBIENT);
+        P2OUT &= ~IR_LED;
+        __delay_cycles(50000);
+        ambL = ADC_Left_Detect;
+        ambR = ADC_Right_Detect;
+        strcpy(display_line[1], "AMBIENT   ");
+        strcpy(display_line[3], "CAPTURED  ");
+        display_changed = TRUE;
+        update_display = TRUE;
+        __delay_cycles(2000000);
+        p7_state = CAL_WHITE;
+        break;
+
+    case CAL_WHITE:
+        clear_display_lines();
+        show_state_debug(CAL_WHITE);
+        P2OUT |= IR_LED;
+        __delay_cycles(50000);
+        whiteL = ADC_Left_Detect;
+        whiteR = ADC_Right_Detect;
+        strcpy(display_line[1], "WHITE     ");
+        strcpy(display_line[3], "CAPTURED  ");
+        display_changed = TRUE;
+        update_display = TRUE;
+        __delay_cycles(2000000);
+        p7_state = CAL_WAIT_BLACK;
+        break;
+
+    case CAL_WAIT_BLACK:
+        clear_display_lines();
+        show_state_debug(CAL_WAIT_BLACK);
+        strcpy(display_line[1], "MOVE TO   ");
+        strcpy(display_line[3], "BLACK/SW1 ");
+        display_changed = TRUE;
+        update_display = TRUE;
+        __delay_cycles(250000);
+        if(sw1_pressed){
+            sw1_pressed = 0;
+            __delay_cycles(250000);
+            p7_state = CAL_BLACK;
+        }
+        break;
+
+    case CAL_BLACK:
+        clear_display_lines();
+        show_state_debug(CAL_BLACK);
+        __delay_cycles(50000);
+        blackL = ADC_Left_Detect;
+        blackR = ADC_Right_Detect;
+        compute_thresholds();
+        strcpy(display_line[1], "THR L:");
+        HEXtoBCD(thrL);
+        for(int i=0;i<4;i++) display_line[1][7+i] = hexbuf[i];
+        strcpy(display_line[3], "THR R:");
+        HEXtoBCD(thrR);
+        for(int i=0;i<4;i++) display_line[3][7+i] = hexbuf[i];
+        display_changed = TRUE;
+        update_display = TRUE;
+        __delay_cycles(3000000);
+        lap_count = 0;
+        crossing = 0;
+        p7_state = INTERCEPT;
+        break;
+
+    case INTERCEPT:
+        clear_display_lines();
+        show_state_debug(INTERCEPT);
+        strcpy(display_line[1], "INTERCEPT ");
+        display_changed = TRUE;
+        update_display = TRUE;
+        moveforward();
+        if(ADC_Left_Detect > thrL || ADC_Right_Detect > thrR){
+            stopall();
+            __delay_cycles(750000);
+            p7_state = TURN_ALIGN;
+        }
+        break;
+
+    case TURN_ALIGN:
+        clear_display_lines();
+        show_state_debug(TURN_ALIGN);
+        strcpy(display_line[1], "ALIGNING  ");
+        display_changed = TRUE;
+        update_display = TRUE;
+        spin_counterclockwise();
+        if((ADC_Left_Detect > thrL) || (ADC_Right_Detect > thrR)){
+            stopall();
+            __delay_cycles(750000);
+            p7_state = CIRCLE1;
+        }
+        break;
+
+    case CIRCLE1:
+        clear_display_lines();
+        show_state_debug(CIRCLE1);
+        strcpy(display_line[1], "LAP 1     ");
+        display_changed = TRUE;
+        update_display = TRUE;
+        if(ADC_Left_Detect > thrL) slow_left_wheel();
+        else if(ADC_Right_Detect > thrR) slow_right_wheel();
+        else moveforward();
+        if(ADC_Left_Detect < thrL && ADC_Right_Detect < thrR) crossing = 1;
+        if(crossing && ADC_Left_Detect > thrL && ADC_Right_Detect > thrR){
+            crossing = 0;
+            lap_count++;
+            stopall();
+            __delay_cycles(1000000);
+            p7_state = CIRCLE2;
+        }
+        break;
+
+    case CIRCLE2:
+        clear_display_lines();
+        show_state_debug(CIRCLE2);
+        strcpy(display_line[1], "LAP 2     ");
+        display_changed = TRUE;
+        update_display = TRUE;
+        if(ADC_Left_Detect > thrL) slow_left_wheel();
+        else if(ADC_Right_Detect > thrR) slow_right_wheel();
+        else moveforward();
+        if(ADC_Left_Detect < thrL && ADC_Right_Detect < thrR) crossing = 1;
+        if(crossing && ADC_Left_Detect > thrL && ADC_Right_Detect > thrR){
+            crossing = 0;
+            lap_count++;
+            stopall();
+            __delay_cycles(1000000);
+            p7_state = ENTER_CENTER;
+        }
+        break;
+
+    case ENTER_CENTER:
+        clear_display_lines();
+        show_state_debug(ENTER_CENTER);
+        strcpy(display_line[1], "CENTERING ");
+        display_changed = TRUE;
+        update_display = TRUE;
+        spin_clockwise();
+        __delay_cycles(1600000);
+        moveforward();
+        __delay_cycles(1800000);
+        stopall();
+        P2OUT &= ~IR_LED;
+        p7_state = STOPPED;
+        break;
+
+    case STOPPED:
+        clear_display_lines();
+        show_state_debug(STOPPED);
+        strcpy(display_line[1], "STOPPED   ");
+        display_changed = TRUE;
+        update_display = TRUE;
+        stopall();
+        break;
+    }
+}

@@ -1,0 +1,36 @@
+#include "msp430.h"
+#include "ports.h"
+#include "macros.h"
+#include "LCD.h"
+#include <string.h>
+
+volatile unsigned char sw1_debounce_in_progress = 0;
+volatile unsigned char sw2_debounce_in_progress = 0;
+volatile unsigned int sw1_debounce_count = 0;
+volatile unsigned int sw2_debounce_count = 0;
+volatile unsigned char backlight_state = 0;
+extern char display_line[FOURTH][ELEVENTH];
+extern char *display[FOURTH];
+
+// Forward declaration
+Display_Update(unsigned char, unsigned char, unsigned char, unsigned char);
+
+void Switch1_ISR(void){
+    P4IE &= ~SW1;                // disable SW1 interrupt
+    P6OUT &= ~LCD_BACKLITE;      // turn off backlight during switch press
+    sw1_debounce_in_progress = TRUE;
+    sw1_debounce_count = 0;
+
+    strcpy(display_line[3], "Switch 1");
+    Display_Update(0,0,0,0);
+}
+
+void Switch2_ISR(void){
+    P2IE &= ~SW2;                // disable SW2 interrupt
+    P6OUT &= ~LCD_BACKLITE;      // turn off backlight during switch press
+    sw2_debounce_in_progress = TRUE;
+    sw2_debounce_count = 0;
+
+    strcpy(display_line[3], "Switch 2");
+    Display_Update(0,0,0,0);
+}

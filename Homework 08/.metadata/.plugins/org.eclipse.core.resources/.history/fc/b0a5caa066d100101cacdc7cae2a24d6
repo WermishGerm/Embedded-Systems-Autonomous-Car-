@@ -1,0 +1,149 @@
+//------------------------------------------------------------------------------
+// Homework 08 - Simple UART Communication
+// UART0 <-> PC (Termite)
+// UART1 <-> Loopback
+// Author: Juan C. (fixed and cleaned for HW08 behavior)
+//------------------------------------------------------------------------------
+
+#include "msp430.h"
+#include <string.h>
+#include "LCD.h"
+#include "macros.h"
+#include "serial.h"
+
+// GLOBALS
+volatile unsigned char lcd_index = 0;     // Tracks position for console mode
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+
+//------------------------------------------------------------------------------
+//  Initialize UCA0 (PC/USB UART) at 115200 baud
+//------------------------------------------------------------------------------
+void Init_Serial_UCA0(void) {
+
+    UCA0CTLW0 = UCSWRST;         // Reset state
+    UCA0CTLW0 |= UCSSEL__SMCLK;  // SMCLK = 8 MHz
+
+    UCA0BRW   = 4;               // 115200 baud
+    UCA0MCTLW = 0x5551;          // Modulation from datasheet
+
+    UCA0CTLW0 &= ~UCSWRST;       // Enable UART
+    UCA0IE |= UCRXIE;            // Enable RX interrupt
+}
+
+//------------------------------------------------------------------------------
+//  Initialize UCA1 (Internal echo UART)
+//------------------------------------------------------------------------------
+void Init_Serial_UCA1(void) {
+
+    UCA1CTLW0 = UCSWRST;
+    UCA1CTLW0 |= UCSSEL__SMCLK;
+
+    UCA1BRW   = 4;               // 115200
+    UCA1MCTLW = 0x5551;
+
+    UCA1CTLW0 &= ~UCSWRST;
+    UCA1IE |= UCRXIE;            // RX interrupt ONLY
+}
+
+//------------------------------------------------------------------------------
+// Set BOTH UARTs to 115200
+//------------------------------------------------------------------------------
+void Serial_Set_Baud_115200(void) {
+
+    // UCA0
+    UCA0CTLW0 |= UCSWRST;
+    UCA0BRW   = 4;
+    UCA0MCTLW = 0x5551;
+    UCA0CTLW0 &= ~UCSWRST;
+
+    // UCA1
+    UCA1CTLW0 |= UCSWRST;
+    UCA1BRW   = 4;
+    UCA1MCTLW = 0x5551;
+    UCA1CTLW0 &= ~UCSWRST;
+
+    lcd_index = 0; // Reset console line
+}
+
+//------------------------------------------------------------------------------
+// Set BOTH UARTs to 460800
+//------------------------------------------------------------------------------
+void Serial_Set_Baud_460800(void) {
+
+    // UCA0
+    UCA0CTLW0 |= UCSWRST;
+    UCA0BRW   = 17;
+    UCA0MCTLW = 0x4A00;
+    UCA0CTLW0 &= ~UCSWRST;
+
+    // UCA1
+    UCA1CTLW0 |= UCSWRST;
+    UCA1BRW   = 17;
+    UCA1MCTLW = 0x4A00;
+    UCA1CTLW0 &= ~UCSWRST;
+
+    lcd_index = 0;
+}
+
+//------------------------------------------------------------------------------
+// Send a string over UCA0 (polled mode)
+//------------------------------------------------------------------------------
+void Serial_Send_String(char *s) {
+
+    while (*s) {
+        while (!(UCA0IFG & UCTXIFG));  // Wait for empty buffer
+        UCA0TXBUF = *s++;
+    }
+}
+
+//------------------------------------------------------------------------------
+//  UCA0 ISR  (PC <-> MSP)
+//------------------------------------------------------------------------------
+#pragma vector = EUSCI_A0_VECTOR
+__interrupt void eUSCI_A0_ISR(void) {
+
+    switch (__even_in_range(UCA0IV, 0x08)) {
+
+    case 2: { // RXIFG
+
+        char rx = UCA0RXBUF;
+
+        // Forward to UCA1
+        UCA1TXBUF = rx;
+
+        // ----- LCD CONSOLE ACCUMULATION (Option B) -----
+        display_line[0][lcd_index++] = rx;
+        if (lcd_index >= 10) lcd_index = 0;
+        display_line[0][lcd_index] = '\0';
+
+        display_changed = TRUE;
+
+        break;
+    }
+
+    default:
+        break;
+    }
+}
+
+//------------------------------------------------------------------------------
+//  UCA1 ISR  (Echo back to PC)
+//------------------------------------------------------------------------------
+#pragma vector = EUSCI_A1_VECTOR
+__interrupt void eUSCI_A1_ISR(void) {
+
+    switch (__even_in_range(UCA1IV, 0x08)) {
+
+    case 2: { // RXIFG
+        char rx = UCA1RXBUF;
+
+        // Echo back to PC
+        UCA0TXBUF = rx;
+        break;
+    }
+
+    default:
+        break;
+    }
+}

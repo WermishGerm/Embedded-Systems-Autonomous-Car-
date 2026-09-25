@@ -1,0 +1,110 @@
+#include "msp430.h"
+#include <string.h>
+#include "serial.h"
+#include "LCD.h"
+#include "macros.h"
+
+extern char display_line[4][11];
+extern void update_string(char *string, int line);
+
+volatile char rx_buffer[11] = {0};
+volatile unsigned int rx_index = 0;
+volatile unsigned char message_ready = 0;
+
+volatile unsigned char baud_mode = BAUD_9600;
+volatile unsigned char serial_test_mode = 0;
+
+// ----------------------------------------------------------------
+// Init UART on UCA1  (P4.2 RX, P4.3 TX)
+// ----------------------------------------------------------------
+void Init_Serial(void) {
+    UCA1CTLW0 = UCSWRST;          // Put eUSCI in reset
+    UCA1CTLW0 |= UCSSEL__SMCLK;   // SMCLK = 8 MHz
+
+    Set_Baud(BAUD_9600);          // default baud
+
+    UCA1CTLW0 &= ~UCSWRST;        // Release reset
+    UCA1IE |= UCRXIE;             // Enable RX interrupt
+}
+
+// ----------------------------------------------------------------
+// Change baud dynamically
+// ----------------------------------------------------------------
+void Set_Baud(unsigned char rate) {
+    baud_mode = rate;
+
+    UCA1CTLW0 |= UCSWRST; // must put in reset to change baud
+
+    if (rate == BAUD_9600) {
+        UCA1BRW = 52;       // 8 MHz / 9600
+        UCA1MCTLW = 0x4911; // OK oversampling
+    } else {
+        UCA1BRW = 4;        // 8 MHz / 115200
+        UCA1MCTLW = 0x5551;
+    }
+
+    UCA1CTLW0 &= ~UCSWRST;
+    UCA1IE |= UCRXIE;
+}
+
+// ----------------------------------------------------------------
+// Send message when SW1 is pressed
+// ----------------------------------------------------------------
+void Transmit_Command(void) {
+    if (!message_ready) return;
+
+    strcpy(display_line[LINE1], "Transmit   ");
+    strcpy(display_line[LINE2], rx_buffer);
+
+    update_string(display_line[LINE1], LINE1);
+    update_string(display_line[LINE2], LINE2);
+    unsigned int i;
+    for (i=0; i < 10; i++) {
+        while (!(UCA1IFG & UCTXIFG));
+        UCA1TXBUF = rx_buffer[i];
+    }
+
+    message_ready = 0;
+    memset((char*)rx_buffer, 0x00, 11);
+}
+
+// ----------------------------------------------------------------
+// Update LCD with received message
+// ----------------------------------------------------------------
+void Serial_Process_RX(void) {
+    if (!message_ready) return;
+
+    strcpy(display_line[LINE1], "Received   ");
+    strcpy(display_line[LINE4], rx_buffer);
+
+    update_string(display_line[LINE1], LINE1);
+    update_string(display_line[LINE4], LINE4);
+
+    message_ready = 0;
+}
+
+// ----------------------------------------------------------------
+// UART ISR for UCA1
+// ----------------------------------------------------------------
+#pragma vector = EUSCI_A1_VECTOR
+__interrupt void EUSCI_A1_ISR(void) {
+
+    if (!serial_test_mode) return;
+
+    if (UCA1IFG & UCRXIFG) {
+        char c = UCA1RXBUF;
+
+        // Start of a new message → clear buffer
+        if (rx_index == 0) {
+            memset((char*)rx_buffer, 0, 11);
+        }
+
+        rx_buffer[rx_index++] = c;
+
+        if (rx_index >= 10) {
+            rx_buffer[10] = '\0';
+            message_ready = 1;
+            rx_index = 0;
+        }
+    }
+}

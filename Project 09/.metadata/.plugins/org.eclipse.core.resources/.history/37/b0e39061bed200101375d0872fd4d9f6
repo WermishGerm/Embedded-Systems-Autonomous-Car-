@@ -1,0 +1,21 @@
+// ============================================================================
+// command_parser.h — Project 09 Command Parser
+// Parses insecure commands (F2, R90, etc) and secure commands (^1234F5678)
+// Author: Juan Contreras-Flores
+// ============================================================================
+
+#ifndef COMMAND_PARSER_H_
+#define COMMAND_PARSER_H_
+
+#include <stdint.h>
+
+// Initialize parser (if needed)
+void command_parser_init(void);
+
+// Parse a full incoming line (from PC, WiFi, UART)
+void command_parser_process(char *input);
+
+// Secure protocol settings
+#define SECURE_PIN "1234"     // Your Project 09 PIN
+
+#endif

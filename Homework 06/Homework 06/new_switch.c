@@ -1,0 +1,80 @@
+#include  "msp430.h"
+#include "ports.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+
+unsigned char nsw1_position;
+unsigned char nsw2_position;
+
+unsigned int ncount_debounce_SW1;
+unsigned int ncount_debounce_SW2;
+
+unsigned char okay_to_look_at_nswitch1;
+unsigned char okay_to_look_at_nswitch2;
+
+extern volatile unsigned char in_debounce;
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+
+//------------------------------------------------------------------------------
+// Port 4 interrupt. For switches, they are disabled for the duration
+// of the debounce timer. Flag is set that user space can check.
+//Include #pragma vector = [Assigned Vector]
+#pragma vector=PORT4_VECTOR
+//Create Interrupt Service Routine Function with “__interrupt”
+__interrupt void switch1_interrupt(void) {
+// Switch 1
+if (P4IFG & SW1) {
+	P4IFG &= ~SW1; // IFG SW1 cleared
+	P4IE &= ~SW1;
+
+	nsw1_position = PRESSED;
+	okay_to_look_at_nswitch1 = NOT_OKAY;
+
+	in_debounce = 1;
+	ncount_debounce_SW1 = DEBOUNCE_RESTART;
+
+	TB0CCR1 = TB0R + TB0CCR1_INTERVAL;
+	TB0CCTL1 |= CCIE;
+
+	// Disable the Switch Interrupt.
+	// Clear any current timer interrupt.
+	P6OUT &= ~LCD_BACKLITE ; // LCD_BACKLITE off to indicate boot ISR working
+	 // --- DISPLAY WHICH SWITCH ---
+	    display_changed = 1;
+	    strcpy(display_line[0], "  Switch  ");
+	    strcpy(display_line[2], "    1     ");
+	  }
+
+//Use a Timer Value to control the debounce
+}
+
+#pragma vector=PORT2_VECTOR
+//Create Interrupt Service Routine Function with “__interrupt”
+__interrupt void switch2_interrupt(void) {
+
+      // --- SWITCH 2 PRESSED ---
+if (P2IFG & SW2) {
+        P2IFG &= ~SW2;               // Clear SW2 interrupt flag
+        P2IE  &= ~SW2;               // Disable SW2 interrupt until debounce done
+
+        nsw2_position = PRESSED;
+        okay_to_look_at_nswitch2 = NOT_OKAY;
+        ncount_debounce_SW2 = 0;     // Reset debounce counter
+
+        in_debounce = 1;             // Pause LCD blinking
+        TB0CCR1 = TB0R + TB0CCR1_INTERVAL;  // Start debounce timing
+        TB0CCTL1 |= CCIE;            // Enable CCR1 interrupt
+
+        P6OUT &= ~LCD_BACKLITE;      // Turn off LCD backlight
+
+        // --- DISPLAY WHICH SWITCH ---
+        display_changed = 1;
+        strcpy(display_line[0], "  Switch  ");
+        strcpy(display_line[2], "    2     ");
+      }
+//Use a Timer Value to control the debounce
+}
+//------------------------------------------------------------------------------

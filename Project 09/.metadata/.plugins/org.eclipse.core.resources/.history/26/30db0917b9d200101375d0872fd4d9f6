@@ -1,0 +1,217 @@
+// ============================================================================
+// movement.c — Project 09 Unified Movement Engine (PWM + Timers + Queue)
+// All NEW movement logic goes here.
+// Author: Juan Contreras-Flores
+// ============================================================================
+
+#include "msp430.h"
+#include "LCD.h"
+#include "movement.h"
+#include "macros.h"
+#include <string.h>
+#include <stdlib.h>
+#include "ports.h"
+
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+
+// ============================================================================
+// MOVEMENT STATE MACHINE
+// ============================================================================
+typedef enum {
+    MOVE_IDLE = 0,
+    MOVE_RUNNING,
+} MoveState;
+
+volatile MoveState move_state = MOVE_IDLE;
+volatile uint16_t move_timer_ms = 0;
+
+// ============================================================================
+// QUEUE IMPLEMENTATION
+// ============================================================================
+MoveCmd move_queue[MOVE_QUEUE_SIZE];
+uint8_t move_q_head = 0;
+uint8_t move_q_tail = 0;
+
+void movement_queue_push(char direction, uint16_t value) {
+    uint8_t next = (move_q_head + 1) % MOVE_QUEUE_SIZE;
+    if (next == move_q_tail) return; // queue full — ignore
+    move_queue[move_q_head].direction = direction;
+    move_queue[move_q_head].value = value;
+    move_q_head = next;
+}
+
+uint8_t movement_queue_pop(MoveCmd *out) {
+    if (move_q_tail == move_q_head) return 0; // empty
+    *out = move_queue[move_q_tail];
+    move_q_tail = (move_q_tail + 1) % MOVE_QUEUE_SIZE;
+    return 1;
+}
+
+// ============================================================================
+// PWM INITIALIZATION (Timer A1)
+// ============================================================================
+static void Init_PWM(void) {
+
+    // TB1 PWM PERIOD
+    TB1CCR0 = PWM_PERIOD;
+
+    // LEFT WHEEL PWM — TB1.1
+    TB1CCTL1 = OUTMOD_7;
+    TB1CCR1 = 0;
+
+    // RIGHT WHEEL PWM — TB1.2
+    TB1CCTL2 = OUTMOD_7;
+    TB1CCR2 = 0;
+
+    // Timer_B1 control settings
+    TB1CTL = TBSSEL__SMCLK | MC__UP | TBCLR;
+}
+
+
+// ============================================================================
+// WHEEL CONTROL HELPERS
+// ============================================================================
+static void wheels_forward(void) {
+    TB1CCR1 = PWM_SPEED;
+    TB1CCR2 = PWM_SPEED;
+}
+
+static void wheels_backward(void) {
+    TB1CCR1 = PWM_SPEED;
+    TB1CCR2 = PWM_SPEED;
+}
+
+static void wheels_left(void) {
+    TB1CCR1 = 0;
+    TB1CCR2 = PWM_SPEED;
+}
+
+static void wheels_right(void) {
+    TB1CCR1 = PWM_SPEED;
+    TB1CCR2 = 0;
+}
+
+void movement_stop(void) {
+    TB1CCR1 = 0;
+    TB1CCR2 = 0;
+}
+
+
+// ============================================================================
+// INIT
+// ============================================================================
+void movement_init(void) {
+    Init_PWM();
+    move_state = MOVE_IDLE;
+    move_timer_ms = 0;
+}
+
+// ============================================================================
+// BIG FONT DISPLAY
+// ============================================================================
+void movement_display_big(char direction, uint16_t value) {
+
+    // Build big text
+    char buff[11];
+    sprintf(buff, "%c%u", direction, value);
+
+    // Clear all display lines first
+    strcpy(display_line[0], "          ");
+    strcpy(display_line[1], "          ");
+    strcpy(display_line[2], "          ");
+    strcpy(display_line[3], "          ");
+
+    // Place the big-text string into line 1 (centered)
+    strncpy(display_line[1], buff, 10);
+
+    display_changed = TRUE;
+    update_display = TRUE;
+
+    // Show big font (takes the middle line)
+    lcd_BIG_mid();   // <-- NO ARGUMENT
+}
+
+// ============================================================================
+// EXECUTE ONE NEW COMMAND
+// ============================================================================
+void movement_execute_command(char direction, uint16_t value) {
+
+    // Display big font
+    movement_display_big(direction, value);
+
+    // Determine movement duration
+    switch(direction) {
+    case 'F':
+        wheels_forward();
+        move_timer_ms = FORWARD_MS(value);
+        break;
+
+    case 'B':
+        wheels_backward();
+        move_timer_ms = BACKWARD_MS(value);
+        break;
+
+    case 'L':
+        wheels_left();
+        move_timer_ms = (value == 45 ? TURN_45_MS : TURN_90_MS);
+        break;
+
+    case 'R':
+        wheels_right();
+        move_timer_ms = (value == 45 ? TURN_45_MS : TURN_90_MS);
+        break;
+
+    default:
+        return; // invalid
+    }
+
+    move_state = MOVE_RUNNING;
+}
+
+// ============================================================================
+// EXECUTE STRING COMMAND (like "F2" or "R90")
+// ============================================================================
+void movement_execute_string(char *cmd) {
+    if (!cmd || strlen(cmd) < 2) return;
+
+    char direction = cmd[0];
+    uint16_t value = atoi(&cmd[1]);
+    if (value == 0) return;
+
+    movement_queue_push(direction, value);
+}
+
+// ============================================================================
+// UPDATE — called each main loop
+// ============================================================================
+void movement_update(void) {
+
+    if (move_state == MOVE_RUNNING) {
+
+        if (move_timer_ms > 0) {
+            move_timer_ms--;
+            return;
+        }
+
+        // Movement finished
+        movement_stop();
+        lcd_4line();
+
+        MoveCmd next;
+        if (movement_queue_pop(&next)) {
+            movement_execute_command(next.direction, next.value);
+        } else {
+            move_state = MOVE_IDLE;
+        }
+    }
+
+    // If idle, start next queued command
+    if (move_state == MOVE_IDLE) {
+        MoveCmd next;
+        if (movement_queue_pop(&next)) {
+            movement_execute_command(next.direction, next.value);
+        }
+    }
+}

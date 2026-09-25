@@ -1,0 +1,82 @@
+//------------------------------------------------------------------------------
+//  File Name : main.c
+//
+//------------------------------------------------------------------------------
+#include "msp430.h"
+#include "functions.h"
+#include "LCD.h"
+#include "ports.h"
+#include "macros.h"
+#include "serial.h"
+
+// GLOBALS FROM YOUR PROJECT
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+extern volatile unsigned char event;
+extern volatile unsigned char serial_test_mode;
+
+//------------------------------------------------------------------------------
+// Main
+//------------------------------------------------------------------------------
+void main(void){
+  WDTCTL = WDTPW | WDTHOLD;  // Stop watchdog timer
+
+  //--------------------------------------------------------------------------
+  // System Initialization
+  //--------------------------------------------------------------------------
+  Init_Ports();
+  Init_Clocks();
+  Init_Conditions();
+  Init_LCD();
+  Init_Timers();
+  Init_ADC();
+
+  enable_interrupts();
+
+  //--------------------------------------------------------------------------
+  // PROJECT 8 ADDITIONS
+  //--------------------------------------------------------------------------
+  Init_Serial();            // Initialize UART (UCA1 on P4.2/P4.3)
+  serial_test_mode = 1;     // Enable UART ISR for Project 8
+
+  //--------------------------------------------------------------------------
+  // Initial LCD Display for Project 8
+  //--------------------------------------------------------------------------
+  strcpy(display_line[0], "Waiting    ");
+  strcpy(display_line[1], "  Proj 8   ");
+  strcpy(display_line[2], "9600       ");
+  strcpy(display_line[3], "           ");
+  display_changed = TRUE;
+  update_display = TRUE;
+
+  //--------------------------------------------------------------------------
+  // Main Loop
+  //--------------------------------------------------------------------------
+  while(ALWAYS) {
+
+    // PROJECT 8 UART RECEIVE HANDLING
+    Serial_Process_RX();
+
+    // Your car's state machine (Project 7 & earlier)
+    Carlson_StateMachine();
+
+    // Handle switches (SW1 for transmit, SW2 for baud toggle)
+    Switches_Process();
+
+    // Display update state machine
+    Display_Process();
+
+    // Test pin toggle (your existing code)
+    P3OUT ^= TEST_PROBE;
+
+//    // Blackline follow event processing (Project 6)
+//    if(event == BLACK_LINE_FOLLOW){
+//      blackline_state();
+//      Update_Blackline_Display();
+//    }
+
+    // Required LCD display refresh engine
+    LCD_update();
+  }
+}

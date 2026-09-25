@@ -1,0 +1,26 @@
+/*
+ * serial.h
+ *
+ *  Created on: Dec 6, 2025
+ *      Author: jcont
+ */
+#ifndef SERIAL_H_
+#define SERIAL_H_
+
+#define BAUD_9600     0
+#define BAUD_115200   1
+
+void Init_Serial(void);
+void Set_Baud(unsigned char rate);
+void Transmit_Command(void);
+void Serial_Process_RX(void);
+
+
+extern volatile char rx_buffer[11];
+extern volatile unsigned int rx_index;
+extern volatile unsigned char serial_test_mode;
+
+extern volatile unsigned char message_ready;
+extern volatile unsigned char baud_mode;
+
+#endif

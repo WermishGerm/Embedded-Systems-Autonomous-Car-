@@ -1,0 +1,42 @@
+/*
+ * IOTtrans.h
+ *
+ *  Created on: Dec 6, 2025
+ *      Author: jcont
+ */
+
+#ifndef IOTTRANS_H_
+#define IOTTRANS_H_
+
+#include <stdint.h>
+
+// ===== UART Speeds =====
+#define BAUD_9600      0
+#define BAUD_115200    1
+
+// ===== Ring Buffer Sizes =====
+#define RING_SIZE      128
+
+// ===== Global UART Buffers =====
+extern volatile char pc_to_iot[RING_SIZE];
+extern volatile char iot_to_pc[RING_SIZE];
+
+extern volatile uint16_t pc_iot_head, pc_iot_tail;
+extern volatile uint16_t iot_pc_head, iot_pc_tail;
+
+// ===== FRAM command state =====
+extern volatile uint8_t fram_mode;
+extern volatile uint8_t fram_index;
+extern char fram_cmd[20];
+
+// ===== Function Prototypes =====
+void Init_UART_PC(void);
+void Init_UART_IOT(uint8_t baud_mode);
+
+void UART_PC_TX(char c);
+void UART_IOT_TX(char c);
+
+void UART_Bridge_Process(void);
+void Process_FRAM_Command(void);
+
+#endif

@@ -1,0 +1,111 @@
+/*
+ * switches.c
+ *
+ * Created on: Oct 1, 2025
+ * Author: Juan Contreras
+ *
+ * List of switches used to cycle through getting shapes
+ *
+ */
+#include  "msp430.h"
+#include "ports.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+
+unsigned char sw1_position;
+unsigned char sw2_position;
+
+unsigned char okay_switch1;
+unsigned char okay_switch2;
+
+unsigned int count_debounce_SW1;
+unsigned int count_debounce_SW2;
+
+extern char display_line[4][11];
+extern volatile unsigned int lt_stop;
+unsigned int shapes_menu = 0;
+extern unsigned char event;
+unsigned char shape_on_screen;
+
+extern volatile unsigned char display_changed;
+extern unsigned int delay_start; // Added external reference to delay_start
+extern unsigned char search_state; // Added external reference to search_state
+extern unsigned char clock_running;
+
+void Switches_Process(void){
+// This function calls the individual Switch Functions
+ Switch1_Process();
+ Switch2_Process();
+}
+
+void Switch1_Process(void){
+    if(okay_switch1 && sw1_position){
+        if(!(P4IN & SW1)){
+            sw1_position = PRESSED;
+            okay_switch1 = NOT_OKAY;
+            count_debounce_SW1 = 0;
+
+            // --- START CALIBRATION ---
+            if(event != CAL_DONE && event != INTERCEPT){
+                event = CALIBRATE_MODE;
+                search_state = CAL_AMBIENT;
+
+                strcpy(display_line[0], "CALIBRATE ");
+                strcpy(display_line[1], "AMBIENT   ");
+                strcpy(display_line[2], "          ");
+                strcpy(display_line[3], "SW1->NEXT ");
+                display_changed = TRUE;
+            }
+            // --- START MISSION ---
+            else if(event == CAL_DONE){
+                event = INTERCEPT;
+                clock_running = 1;
+
+                strcpy(display_line[0], "INTERCEPT ");
+                strcpy(display_line[3], "TIME:0.0  ");
+                display_changed = TRUE;
+            }
+        }
+    }
+
+    // debounce
+    if(count_debounce_SW1 <= DEBOUNCE_TIME) count_debounce_SW1++;
+    else {
+        okay_switch1 = OKAY;
+        if(P4IN & SW1) sw1_position = RELEASED;
+    }
+}
+
+
+void Switch2_Process(void){
+// Switch 2 Configurations (Port P2 Pin 3)
+ if (okay_switch2 && sw2_position){
+   if (!(P2IN & SW2)){              // button pressed (active low)
+     sw2_position = PRESSED;
+     okay_switch2 = NOT_OKAY;
+     count_debounce_SW2 = DEBOUNCE_RESTART;
+
+     // Run selected shape
+     if (event == BLACK_LINE_FOLLOW) {
+         event = STOPALL; // SW2: Stop the project
+     } else {
+         event = shape_on_screen; // Run the previously selected shape
+     }
+
+     lcd_4line();
+     display_changed = TRUE;
+   }
+ }
+
+ // Debounce logic
+  if (count_debounce_SW2 <= DEBOUNCE_TIME){
+    count_debounce_SW2++;
+  } else {
+    okay_switch2 = OKAY;
+    if (P2IN & SW2){
+      sw2_position = RELEASED;
+    }
+  }
+}

@@ -1,0 +1,145 @@
+// ================================================================
+// serial.c — Full Ring Buffer Implementation for Project 8
+// UART: UCA1 <-> AD2 ONLY
+// ================================================================
+
+#include "msp430.h"
+#include <string.h>
+#include "serial.h"
+#include "LCD.h"
+#include "macros.h"
+
+// -------------------------
+// RING BUFFERS
+// -------------------------
+volatile unsigned char rx_buf[RX_BUFFER_SIZE];
+volatile unsigned char tx_buf[TX_BUFFER_SIZE];
+
+volatile unsigned int rx_head = 0;
+volatile unsigned int rx_tail = 0;
+
+volatile unsigned int tx_head = 0;
+volatile unsigned int tx_tail = 0;
+
+// -------------------------
+// COMMAND HANDLING
+// -------------------------
+volatile unsigned char serial_cmd_ready = 0;
+char serial_last_cmd[11];
+
+static char cmd_assembly[11];
+static unsigned int cmd_index = 0;
+
+// -------------------------
+#define RB_NEXT(x, size)   (((x) + 1) % (size))
+
+// ================================================================
+// INITIALIZATION (DEFAULT 115200)
+// ================================================================
+void Serial_Init_UCA1_115200(void) {
+
+    UCA1CTLW0 = UCSWRST;
+    UCA1CTLW0 |= UCSSEL__SMCLK;
+
+    UCA1BRW   = 4;
+    UCA1MCTLW = 0x5551;
+
+    UCA1CTLW0 &= ~UCSWRST;
+
+    UCA1IE |= UCRXIE;
+}
+
+// ================================================================
+void Serial_Set_Baud_115200(void) {
+    UCA1CTLW0 |= UCSWRST;
+    UCA1BRW   = 4;
+    UCA1MCTLW = 0x5551;
+    UCA1CTLW0 &= ~UCSWRST;
+}
+
+// ================================================================
+void Serial_Set_Baud_460800(void) {
+    UCA1CTLW0 |= UCSWRST;
+    UCA1BRW   = 17;
+    UCA1MCTLW = 0x4A00;
+    UCA1CTLW0 &= ~UCSWRST;
+}
+
+// ================================================================
+void Serial_ResetBuffers(void) {
+    rx_head = rx_tail = 0;
+    tx_head = tx_tail = 0;
+    cmd_index = 0;
+    serial_cmd_ready = 0;
+}
+
+// ================================================================
+static void Serial_TX_Byte(unsigned char b) {
+
+    unsigned int next = RB_NEXT(tx_head, TX_BUFFER_SIZE);
+    if (next == tx_tail) return;
+
+    tx_buf[tx_head] = b;
+    tx_head = next;
+
+    UCA1IE |= UCTXIE;
+}
+
+// ================================================================
+void Serial_TX_Command(char *cmd) {
+    for (int i = 0; i < SERIAL_CMD_LENGTH; i++) {
+        Serial_TX_Byte(cmd[i]);
+    }
+}
+
+// ================================================================
+void Serial_Process(void) {
+
+    while (rx_head != rx_tail) {
+        unsigned char b = rx_buf[rx_tail];
+        rx_tail = RB_NEXT(rx_tail, RX_BUFFER_SIZE);
+
+        cmd_assembly[cmd_index++] = b;
+
+        if (cmd_index == SERIAL_CMD_LENGTH) {
+            cmd_assembly[10] = '\0';
+            strcpy(serial_last_cmd, cmd_assembly);
+            serial_cmd_ready = 1;
+            cmd_index = 0;
+        }
+    }
+}
+
+// ================================================================
+// ISR — UCA1 RX/TX
+// ================================================================
+#pragma vector = EUSCI_A1_VECTOR
+__interrupt void eUSCI_A1_ISR(void)
+{
+    switch (__even_in_range(UCA1IV, 0x08)) {
+
+    case 2: { // RXIFG
+        unsigned char b = UCA1RXBUF;
+
+        unsigned int next = RB_NEXT(rx_head, RX_BUFFER_SIZE);
+        if (next != rx_tail) {
+            rx_buf[rx_head] = b;
+            rx_head = next;
+        }
+        break;
+    }
+
+    case 4: { // TXIFG
+        if (tx_head != tx_tail) {
+            UCA1TXBUF = tx_buf[tx_tail];
+            tx_tail = RB_NEXT(tx_tail, TX_BUFFER_SIZE);
+        } else {
+            UCA1IE &= ~UCTXIE;
+        }
+        break;
+    }
+
+    default:
+        break;
+    }
+}

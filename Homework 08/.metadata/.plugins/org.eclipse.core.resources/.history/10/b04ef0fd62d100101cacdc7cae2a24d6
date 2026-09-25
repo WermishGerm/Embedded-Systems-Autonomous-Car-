@@ -1,0 +1,125 @@
+//------------------------------------------------------------------------------
+// main.c  (Updated for Homework 08)
+//------------------------------------------------------------------------------
+
+#include  "msp430.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include  "macros.h"
+#include  "ports.h"
+#include  "serial.h"     // <<< REQUIRED for UART control >>>
+
+// Function Prototypes
+void main(void);
+void Init_Conditions(void);
+void Display_Process(void);
+void Init_LEDs(void);
+void stopall(void);
+void moveforward(void);
+void Carlson_StateMachine(void);
+void wait_case(void);
+void start_case(void);
+void run_case(void);
+void end_case(void);
+void Run_Straight(void);
+void Run_Circle(void);
+void Run_Figure8(void);
+void LCD_update(void);
+void Init_ADC(void);
+void Run_Triangle(void);
+void blackline_state(void);
+
+// Global Variables
+volatile char slow_input_down;
+extern char display_line[FOURTH][ELEVENTH];
+extern char *display[FOURTH];
+unsigned char display_mode;
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+extern volatile unsigned int update_display_count;
+extern volatile unsigned int Time_Sequence;
+extern volatile char one_time;
+unsigned int test_value;
+volatile char control_state[7];
+unsigned int Last_Time_Sequence;
+unsigned int wheel_move;
+unsigned char forward;
+unsigned char event;
+unsigned int event_count;
+
+extern unsigned int cycle_time;
+extern unsigned int time_change;
+
+// ---------------------------
+//   MAIN PROGRAM
+// ---------------------------
+void main(void){
+  WDTCTL = WDTPW | WDTHOLD;
+  PM5CTL0 &= ~LOCKLPM5;
+
+  Init_Ports();
+  Init_Clocks();
+  Init_Conditions();
+  five_msec_sleep(10);   // Wait ~50ms for LCD power stabilization
+
+  Init_LCD();
+  Init_Timers();
+  Init_ADC();
+
+  Init_Serial_UCA1();   // <<< HW08: Enable PC UART
+  Init_Serial_UCA0();   // <<< HW08: Enable IOT/Loopback UART
+
+  enable_interrupts();
+
+  // -------------------------------------------------------
+  // HW08  SPLASH SCREEN (5 seconds)
+  // -------------------------------------------------------
+  strcpy(display_line[0], "           ");
+  strcpy(display_line[1], " NCSU  #1  ");
+  strcpy(display_line[2], "    Baud   ");
+  strcpy(display_line[3], " 115,200   ");
+
+  display_changed = TRUE;
+  lcd_4line();
+  five_msec_sleep(1000);   // 1000 × 5ms = 5 seconds
+
+  //----------------------------------
+  // Your existing project variables
+  //----------------------------------
+  wheel_move = 0;
+  forward = TRUE;
+  event = STRAIGHT;
+
+  // -------------------------------------------------------
+  // MAIN LOOP  (While OS)
+  // -------------------------------------------------------
+  while(ALWAYS) {
+
+    Carlson_StateMachine();
+    Switches_Process();          // <<< HW08: SW1 & SW2 control baud now
+    Display_Process();
+
+    // ------------------------------------------
+    // HW08: Display characters received from UCA1
+    // ------------------------------------------
+    if (serial_rx_flag) {
+        serial_rx_flag = 0;
+
+        display_line[0][0] = usb_rx;  // Show received character
+        display_line[0][1] = '\0';
+
+        display_changed = TRUE;
+    }
+
+    P3OUT ^= TEST_PROBE;
+
+    // Your existing Project 06 logic (unchanged)
+    if(event == BLACK_LINE_FOLLOW){
+        blackline_state();
+        Update_Blackline_Display();
+    }
+
+    LCD_update();
+  }
+}

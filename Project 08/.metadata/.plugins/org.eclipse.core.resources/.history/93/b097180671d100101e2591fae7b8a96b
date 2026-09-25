@@ -1,0 +1,98 @@
+//------------------------------------------------------------------------------
+// main.c  (Updated for Project 8 + Ring Buffer UART)
+//------------------------------------------------------------------------------
+
+#include  "msp430.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include  "macros.h"
+#include  "ports.h"
+#include  "serial.h"
+
+// Function Prototypes
+void stopall(void);
+void moveforward(void);
+void Carlson_StateMachine(void);
+void LCD_update(void);
+void blackline_state(void);
+
+// Global variables
+volatile char slow_input_down;
+extern char display_line[4][11];
+extern char *display[4];
+
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+extern volatile unsigned int update_display_count;
+extern volatile unsigned int Time_Sequence;
+extern volatile char one_time;
+
+unsigned char event;
+
+// ---------------------------
+//   MAIN PROGRAM
+// ---------------------------
+void main(void){
+  WDTCTL = WDTPW | WDTHOLD;
+  PM5CTL0 &= ~LOCKLPM5;
+
+  Init_Ports();
+  Init_Clocks();
+  Init_Conditions();
+  five_msec_sleep(10);
+
+  Init_LCD();
+  Init_Timers();
+  Init_ADC();
+
+  Serial_Init_UCA1_115200();
+  Serial_ResetBuffers();
+
+  enable_interrupts();
+
+  // -------------------------------------------------------
+  // SPLASH SCREEN (5 seconds)
+  // -------------------------------------------------------
+  strcpy(display_line[0], "Waiting   ");
+  strcpy(display_line[1], "          ");
+  strcpy(display_line[2], "   Baud   ");
+  strcpy(display_line[3], "115,200   ");
+
+  display_changed = TRUE;
+  lcd_4line();
+  five_msec_sleep(1000);
+
+  event = NONE;
+
+  // -------------------------------------------------------
+  // MAIN LOOP
+  // -------------------------------------------------------
+  while(1) {
+
+    Carlson_StateMachine();
+    Switches_Process();
+
+    Serial_Process();
+
+    // If a new 10-char command arrives from AD2:
+    if (serial_cmd_ready) {
+        serial_cmd_ready = 0;
+
+        strcpy(display_line[0], "Received  ");
+        strcpy(display_line[3], serial_last_cmd);
+
+        display_changed = TRUE;
+    }
+
+    Display_Process();
+
+    P3OUT ^= TEST_PROBE;
+
+    if(event == BLACK_LINE_FOLLOW){
+        blackline_state();
+    }
+
+    LCD_update();
+  }
+}

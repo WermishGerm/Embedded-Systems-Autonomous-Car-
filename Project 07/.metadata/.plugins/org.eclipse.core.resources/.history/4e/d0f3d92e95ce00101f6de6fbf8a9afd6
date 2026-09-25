@@ -1,0 +1,181 @@
+#include "msp430.h"
+#include "functions.h"
+#include "macros.h"
+#include "LCD.h"
+#include "ports.h"
+#include <math.h>
+#include <string.h>
+
+extern unsigned int ADC_Left_Detect;
+extern unsigned int ADC_Right_Detect;
+extern volatile unsigned int check_line_flag;
+
+extern unsigned long p7_timer_200ms;
+extern unsigned char p7_timer_enabled;
+
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+
+unsigned char bl_state = BL_CAL_AMBIENT;
+
+static unsigned int amb_L, amb_R, white_L, white_R, black_L, black_R;
+static unsigned int th_L, th_R;
+
+static unsigned int lap_count = 0;
+static float last_phase = 0;
+static float filtered_phase = 0;
+static unsigned int stable = 0;
+
+static void show(const char *msg){
+    strncpy(display_line[0], msg, 10);
+    display_line[0][10] = 0;
+
+    float t = p7_timer_200ms * 0.2f;
+    char buf[11];
+    snprintf(buf, 11, "T:%4.1f", t);
+    strncpy(display_line[1], buf, 10);
+    display_line[1][10] = 0;
+
+    strcpy(display_line[2], "          ");
+    strcpy(display_line[3], "          ");
+    display_changed = 1;
+}
+
+static float phase(void){
+    float L = ADC_Left_Detect;
+    float R = ADC_Right_Detect;
+    return (L - R) / (L + R + 1);
+}
+
+static void steer(void){
+    float L = ADC_Left_Detect;
+    float R = ADC_Right_Detect;
+    float e = (L - R);
+
+    float lp = STEER_BASE - STEER_GAIN * e;
+    float rp = STEER_BASE + STEER_GAIN * e;
+
+    if(lp < STEER_MIN) lp = STEER_MIN;
+    if(rp < STEER_MIN) rp = STEER_MIN;
+    if(lp > STEER_MAX) lp = STEER_MAX;
+    if(rp > STEER_MAX) rp = STEER_MAX;
+
+    TB3CCR1 = (unsigned)lp;
+    TB3CCR2 = (unsigned)rp;
+
+    P6OUT &= ~(L_REVERSE | R_REVERSE);
+    P6OUT |=  (L_FORWARD | R_FORWARD);
+}
+
+void blackline_state(void){
+
+    switch(bl_state){
+
+    case BL_CAL_AMBIENT:
+        stopall();
+        show("AMBIENT  ");
+        if(check_line_flag){
+            check_line_flag = 0;
+            amb_L = ADC_Left_Detect;
+            amb_R = ADC_Right_Detect;
+            bl_state = BL_CAL_WHITE;
+        }
+        break;
+
+    case BL_CAL_WHITE:
+        show("WHITE    ");
+        if(check_line_flag){
+            check_line_flag = 0;
+            white_L = ADC_Left_Detect;
+            white_R = ADC_Right_Detect;
+            bl_state = BL_CAL_BLACK;
+        }
+        break;
+
+    case BL_CAL_BLACK:
+        show("BLACK    ");
+        if(check_line_flag){
+            check_line_flag = 0;
+            black_L = ADC_Left_Detect;
+            black_R = ADC_Right_Detect;
+
+            th_L = (black_L + white_L)/2;
+            th_R = (black_R + white_R)/2;
+
+            p7_timer_200ms = 0;
+            lap_count = 0;
+
+            filtered_phase = phase();
+            last_phase = filtered_phase;
+
+            bl_state = BL_INTERCEPT;
+        }
+        break;
+
+    case BL_INTERCEPT:
+        show("INTERCEPT");
+        p7_timer_enabled = 1;
+        moveforward();
+        if(check_line_flag){
+            check_line_flag = 0;
+            if(ADC_Left_Detect < th_L || ADC_Right_Detect < th_R){
+                stopall();
+                __delay_cycles(800000);
+                bl_state = BL_TURN_ALIGN;
+            }
+        }
+        break;
+
+    case BL_TURN_ALIGN:
+        show("TURN LEFT");
+        spin_counterclockwise();
+        if(check_line_flag){
+            check_line_flag = 0;
+            if(ADC_Left_Detect < th_L && ADC_Right_Detect < th_R){
+                stopall();
+                __delay_cycles(800000);
+                bl_state = BL_FOLLOW;
+            }
+        }
+        break;
+
+    case BL_FOLLOW:
+        show("CIRCLING ");
+        steer();
+
+        float p = phase();
+        filtered_phase = 0.82f * filtered_phase + 0.18f * p;
+
+        if(fabs(filtered_phase - last_phase) < 0.015f)
+            stable++;
+        else
+            stable = 0;
+
+        if(stable > PHASE_FILTER_MS){
+            lap_count++;
+            last_phase = filtered_phase;
+            stable = 0;
+            if(lap_count >= BL_MAX_LAPS){
+                bl_state = BL_EXIT;
+            }
+        }
+        break;
+
+    case BL_EXIT:
+        show("EXITING  ");
+        spin_counterclockwise();
+        __delay_cycles(3500000);
+        moveforward();
+        __delay_cycles(3500000);
+        stopall();
+        p7_timer_enabled = 0;
+        bl_state = BL_STOPPED;
+        break;
+
+    case BL_STOPPED:
+        stopall();
+        p7_timer_enabled = 0;
+        show("STOPPED  ");
+        break;
+    }
+}

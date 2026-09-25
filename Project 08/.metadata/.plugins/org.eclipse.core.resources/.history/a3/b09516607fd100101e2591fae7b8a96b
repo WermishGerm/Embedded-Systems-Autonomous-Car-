@@ -1,0 +1,15 @@
+
+#include "msp430.h"
+#include "ports.h"
+
+void Init_Ports(void){
+
+  // UART UCA1 on P4.2 (RX), P4.3 (TX)
+  P4SEL0 |= BIT2 | BIT3;
+  P4SEL1 &= ~(BIT2 | BIT3);
+
+  P4DIR |= BIT3;
+  P4DIR &= ~BIT2;
+
+  // Keep all your original port logic in your project here if needed.
+}

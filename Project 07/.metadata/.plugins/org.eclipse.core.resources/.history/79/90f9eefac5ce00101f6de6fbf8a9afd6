@@ -1,0 +1,119 @@
+//------------------------------------------------------------------------------
+// Display.c – PROJECT 7
+// LCD update compatible with minimal printf mode (NO %f, NO %u, NO width)
+// This version does NOT implement Display_Update() because it already exists
+// in LCD.obj provided by the professor.
+//------------------------------------------------------------------------------
+
+#include "msp430.h"
+#include <string.h>
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+
+// externals
+extern char display_line[4][11];
+extern unsigned char display_changed;
+
+extern unsigned char p7_state;
+
+extern unsigned long p7_timer_tenths;   // 0.1-second units
+
+extern unsigned int ADC_Left_Detect;
+extern unsigned int ADC_Right_Detect;
+
+//---------------------------------------------
+// simple integer-to-string helper
+//---------------------------------------------
+static void int_to_str(unsigned int num, char *out) {
+    char temp[6];
+    int i = 0;
+
+    if (num == 0) {
+        out[0] = '0';
+        out[1] = 0;
+        return;
+    }
+
+    while (num > 0) {
+        temp[i++] = (num % 10) + '0';
+        num /= 10;
+    }
+
+    // reverse
+    int j;
+    for (j = 0; j < i; j++) {
+        out[j] = temp[i - 1 - j];
+    }
+    out[i] = 0;
+}
+
+//------------------------------------------------------------------------------
+// Display_Process – the ONLY function needed here
+// The professor’s LCD.obj calls Display_Update() internally.
+//------------------------------------------------------------------------------
+void Display_Process(void) {
+
+    //----------------------------------------------------
+    // LINE 1 – STATE TEXT
+    //----------------------------------------------------
+    switch (p7_state) {
+        case P7_CAL_AMBIENT: strcpy(display_line[0], "CAL AMB   "); break;
+        case P7_CAL_WHITE:   strcpy(display_line[0], "CAL WHITE "); break;
+        case P7_CAL_BLACK:   strcpy(display_line[0], "CAL BLACK "); break;
+        case P7_READY:       strcpy(display_line[0], "READY P7  "); break;
+        case P7_INTERCEPT:   strcpy(display_line[0], "INTERCEPT "); break;
+        case P7_TURN_ALIGN:  strcpy(display_line[0], "TURN LEFT "); break;
+        case P7_CIRCLE1:     strcpy(display_line[0], "CIRCLE 1  "); break;
+        case P7_CIRCLE2:     strcpy(display_line[0], "CIRCLE 2  "); break;
+        case P7_TURN_IN:     strcpy(display_line[0], "TURN-IN   "); break;
+        case P7_STOPPED:     strcpy(display_line[0], "STOPPED   "); break;
+        default:             strcpy(display_line[0], "UNKNOWN   "); break;
+    }
+
+    //----------------------------------------------------
+    // LINE 2 – LEFT ADC VALUE
+    //----------------------------------------------------
+    char left_buff[6];
+    int_to_str(ADC_Left_Detect, left_buff);
+    strcpy(display_line[1], "L:");
+    strcat(display_line[1], left_buff);
+    while (strlen(display_line[1]) < 10) strcat(display_line[1], " ");
+    display_line[1][10] = 0;
+
+    //----------------------------------------------------
+    // LINE 3 – RIGHT ADC VALUE
+    //----------------------------------------------------
+    char right_buff[6];
+    int_to_str(ADC_Right_Detect, right_buff);
+    strcpy(display_line[2], "R:");
+    strcat(display_line[2], right_buff);
+    while (strlen(display_line[2]) < 10) strcat(display_line[2], " ");
+    display_line[2][10] = 0;
+
+    //----------------------------------------------------
+    // LINE 4 – TIMER "T:xxx.x"
+    //----------------------------------------------------
+    unsigned int seconds = p7_timer_tenths / 10;
+    unsigned int tenths  = p7_timer_tenths % 10;
+
+    char sec_str[6];
+    char tenth_str[2];
+
+    int_to_str(seconds, sec_str);
+    tenth_str[0] = tenths + '0';
+    tenth_str[1] = 0;
+
+    strcpy(display_line[3], "T:");
+    strcat(display_line[3], sec_str);
+    strcat(display_line[3], ".");
+    strcat(display_line[3], tenth_str);
+
+    while (strlen(display_line[3]) < 10) strcat(display_line[3], " ");
+    display_line[3][10] = 0;
+
+    //----------------------------------------------------
+    // Signal LCD.obj to refresh using its Display_Update()
+    //----------------------------------------------------
+    display_changed = TRUE;
+}

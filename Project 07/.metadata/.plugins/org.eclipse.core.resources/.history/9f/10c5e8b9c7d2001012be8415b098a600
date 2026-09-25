@@ -1,0 +1,25 @@
+#include "msp430.h"
+#include "switches.h"
+#include "functions.h"
+#include "macros.h"
+
+volatile unsigned char sw1_pressed = 0;
+volatile unsigned char sw2_pressed = 0;
+
+void Switch1_Process(void){
+    if (!(P4IN & SW1)){           // active LOW
+        __delay_cycles(200000);   // debounce
+        if (!(P4IN & SW1)){
+            sw1_pressed = 1;      // flag for Project7
+        }
+    }
+}
+
+void Switch2_Process(void){
+    if (!(P4IN & SW2)){
+        __delay_cycles(200000);
+        if (!(P4IN & SW2)){
+            sw2_pressed = 1;      // emergency stop
+        }
+    }
+}

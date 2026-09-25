@@ -1,0 +1,75 @@
+/*
+ * timers.c
+ *
+ *  Created on: Oct 7, 2025
+ *      Author: jcont
+ */
+
+
+#include "msp430.h"
+#include "ports.h"
+#include "macros.h"
+
+#define BACKLIGHT_INTERVAL 20000
+#define DEBOUNCE_INTERVAL  5000
+
+extern volatile char sw1_blocked;
+extern volatile char sw2_blocked;
+extern volatile unsigned int sw1_debounce_count;
+extern volatile unsigned int sw2_debounce_count;
+extern volatile unsigned char display_changed;
+
+void Init_Timers(void){
+    TB0CTL = TBSSEL__SMCLK | MC__CONTINUOUS | TBCLR;
+    TB0EX0 = TBIDEX__8;
+
+    // CCR0 - LCD backlight
+    TB0CCR0 = BACKLIGHT_INTERVAL;
+    TB0CCTL0 |= CCIE;
+
+    // CCR1 - SW1 debounce
+    TB0CCR1 = DEBOUNCE_INTERVAL;
+    TB0CCTL1 |= CCIE;
+    TB0CCTL1 &= ~CCIE; // initially disabled
+
+    // CCR2 - SW2 debounce
+    TB0CCR2 = DEBOUNCE_INTERVAL;
+    TB0CCTL2 |= CCIE;
+    TB0CCTL2 &= ~CCIE; // initially disabled
+}
+
+//-------------------- Timer ISR --------------------
+#pragma vector = TIMER0_B0_VECTOR
+__interrupt void Timer_B0_CCR0_ISR(void){
+    P6OUT ^= LCD_BACKLITE;       // Toggle backlight
+    TB0CCR0 += BACKLIGHT_INTERVAL;
+}
+
+#pragma vector = TIMER0_B1_VECTOR
+__interrupt void Timer_B1_ISR(void){
+    switch(__even_in_range(TB0IV,14)){
+        case 2: // CCR1 - SW1
+            if(sw1_blocked){
+                sw1_debounce_count++;
+                if(sw1_debounce_count >= DEBOUNCE_THRESHOLD){
+                    sw1_blocked = 0;
+                    TB0CCTL1 &= ~CCIE; // disable SW1 debounce timer
+                    P4IE |= SW1;       // re-enable SW1 interrupt
+                }
+            }
+            TB0CCR1 += DEBOUNCE_INTERVAL;
+            break;
+        case 4: // CCR2 - SW2
+            if(sw2_blocked){
+                sw2_debounce_count++;
+                if(sw2_debounce_count >= DEBOUNCE_THRESHOLD){
+                    sw2_blocked = 0;
+                    TB0CCTL2 &= ~CCIE; // disable SW2 debounce timer
+                    P2IE |= SW2;       // re-enable SW2 interrupt
+                }
+            }
+            TB0CCR2 += DEBOUNCE_INTERVAL;
+            break;
+        default: break;
+    }
+}

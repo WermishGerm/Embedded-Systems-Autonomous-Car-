@@ -1,0 +1,126 @@
+/*
+ * serial.c
+ *
+ *  Created on: Dec 4, 2025
+ *      Author: jcont
+ */
+
+#include  "msp430.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+#include  "ports.h"
+#include "serial.h"
+
+
+volatile char usb_rx = 0;
+volatile unsigned char serial_rx_flag = 0;
+
+
+// -------------------------------------------------------------
+// SERIAL INITIALIZATION — UCA1 (PC Backchannel)
+// -------------------------------------------------------------
+void Init_Serial_UCA1(void) {
+
+    UCA1CTLW0 = UCSWRST;
+    UCA1CTLW0 |= UCSSEL__SMCLK;
+
+    UCA1BRW   = BAUD_115200_BRW;
+    UCA1MCTLW = BAUD_115200_MCTLW;
+
+    UCA1CTLW0 &= ~UCSWRST;
+    UCA1IE |= UCRXIE;
+    UCA1TXBUF = 0x00;
+}
+
+// -------------------------------------------------------------
+// SERIAL INITIALIZATION — UCA0 (IOT/Loopback)
+// -------------------------------------------------------------
+void Init_Serial_UCA0(void) {
+
+    UCA0CTLW0 = UCSWRST;
+    UCA0CTLW0 |= UCSSEL__SMCLK;
+
+    UCA0BRW   = BAUD_115200_BRW;
+    UCA0MCTLW = BAUD_115200_MCTLW;
+
+    UCA0CTLW0 &= ~UCSWRST;
+    UCA0IE |= UCRXIE;
+    UCA0TXBUF = 0x00;
+}
+
+// -------------------------------------------------------------
+// Baud Switching Functions
+// -------------------------------------------------------------
+void Serial_Set_Baud_115200(void) {
+
+    UCA0CTLW0 |= UCSWRST;
+    UCA0BRW = BAUD_115200_BRW;
+    UCA0MCTLW = BAUD_115200_MCTLW;
+    UCA0CTLW0 &= ~UCSWRST;
+
+    UCA1CTLW0 |= UCSWRST;
+    UCA1BRW = BAUD_115200_BRW;
+    UCA1MCTLW = BAUD_115200_MCTLW;
+    UCA1CTLW0 &= ~UCSWRST;
+}
+
+void Serial_Set_Baud_460800(void) {
+
+    UCA0CTLW0 |= UCSWRST;
+    UCA0BRW = BAUD_460800_BRW;
+    UCA0MCTLW = BAUD_460800_MCTLW;
+    UCA0CTLW0 &= ~UCSWRST;
+
+    UCA1CTLW0 |= UCSWRST;
+    UCA1BRW = BAUD_460800_BRW;
+    UCA1MCTLW = BAUD_460800_MCTLW;
+    UCA1CTLW0 &= ~UCSWRST;
+}
+
+// -------------------------------------------------------------
+// Send an Entire String Over UCA1
+// -------------------------------------------------------------
+void Serial_Send_String(char *s) {
+    while (*s) {
+        while (!(UCA1IFG & UCTXIFG));
+        UCA1TXBUF = *s++;
+    }
+}
+
+// -------------------------------------------------------------
+// ISR — PC → MSP430 (UCA1)
+// -------------------------------------------------------------
+#pragma vector = EUSCI_A1_VECTOR
+__interrupt void eUSCI_A1_ISR(void) {
+
+    switch (__even_in_range(UCA1IV, 0x08)) {
+
+    case 2: // RXIFG
+        usb_rx = UCA1RXBUF;
+        serial_rx_flag = 1;
+        UCA0TXBUF = usb_rx;
+        break;
+
+    default:
+        break;
+    }
+}
+
+// -------------------------------------------------------------
+// ISR — IOT/Loopback → MSP430 (UCA0)
+// -------------------------------------------------------------
+#pragma vector = EUSCI_A0_VECTOR
+__interrupt void eUSCI_A0_ISR(void) {
+
+    switch (__even_in_range(UCA0IV, 0x08)) {
+
+    case 2: // RXIFG
+        UCA1TXBUF = UCA0RXBUF;
+        break;
+
+    default:
+        break;
+    }
+}

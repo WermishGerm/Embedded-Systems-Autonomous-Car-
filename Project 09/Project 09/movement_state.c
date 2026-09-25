@@ -1,0 +1,261 @@
+// ============================================================================
+// MOVEMENT_STATE.C — On-Demand Shape Movement Engine (PWM-based)
+// Replaces: states.c + timers_move.c
+// ============================================================================
+
+#include <stdint.h>
+#include "msp430.h"
+#include "functions.h"
+#include "macros.h"
+#include "ports.h"
+#include "LCD.h"
+
+
+// ============================================================================
+// INTERNAL ENUM FOR SHAPES
+// ============================================================================
+typedef enum {
+    SHAPE_NONE = 0,
+    SHAPE_STRAIGHT,
+    SHAPE_CIRCLE,
+    SHAPE_TRIANGLE,
+    SHAPE_FIGURE8
+} ShapeMode;
+
+static ShapeMode active_shape = SHAPE_NONE;
+static uint16_t shape_timer = 0;
+static uint8_t step = 0;
+
+// ============================================================================
+// INTERNAL HELPERS
+// ============================================================================
+static void shape_display(const char *title, const char *step_text) {
+    strcpy(display_line[0], title);
+    strcpy(display_line[1], step_text);
+    strcpy(display_line[2], "   Shape   ");
+    strcpy(display_line[3], "  Running  ");
+
+    display_changed = 1;
+    update_display = 1;
+}
+
+static void shape_stop(void) {
+    active_shape = SHAPE_NONE;
+    step = 0;
+    shape_timer = 0;
+    stopall();
+
+    strcpy(display_line[0], "  Shape    ");
+    strcpy(display_line[1], "  Done     ");
+    strcpy(display_line[2], "           ");
+    strcpy(display_line[3], "           ");
+    display_changed = 1;
+    update_display = 1;
+}
+
+// ============================================================================
+// PUBLIC API — START FUNCTIONS
+// ============================================================================
+void Run_Straight(void) {
+    active_shape = SHAPE_STRAIGHT;
+    step = 0;
+    shape_timer = 0;
+    shape_display(" Straight ", " Start ");
+}
+
+void Run_Circle(void) {
+    active_shape = SHAPE_CIRCLE;
+    step = 0;
+    shape_timer = 0;
+    shape_display(" Circle ", " Start ");
+}
+
+void Run_Triangle(void) {
+    active_shape = SHAPE_TRIANGLE;
+    step = 0;
+    shape_timer = 0;
+    shape_display("Triangle", " Start ");
+}
+
+void Run_Figure8(void) {
+    active_shape = SHAPE_FIGURE8;
+    step = 0;
+    shape_timer = 0;
+    shape_display("Figure 8", " Start ");
+}
+
+// ============================================================================
+// MAIN SHAPE UPDATE — MUST BE CALLED FROM MAIN LOOP
+// ============================================================================
+void Shape_Update(void) {
+
+    if (active_shape == SHAPE_NONE)
+        return;
+
+    shape_timer++;
+
+    switch (active_shape) {
+
+    // =========================================================================
+    // STRAIGHT SHAPE
+    // =========================================================================
+    case SHAPE_STRAIGHT:
+        switch (step) {
+
+        case 0: // drive forward
+            moveforward();
+            shape_display("Straight ", "Forward");
+            step++;
+            shape_timer = 0;
+            break;
+
+        case 1:
+            if (shape_timer > TRAVEL_DISTANCE) {
+                shape_stop();
+            }
+            break;
+        }
+        break;
+
+    // =========================================================================
+    // CIRCLE SHAPE (simple turn)
+    // =========================================================================
+    case SHAPE_CIRCLE:
+        switch (step) {
+
+        case 0:
+            moveforward();
+            shape_display("Circle", "Forward");
+            step++;
+            shape_timer = 0;
+            break;
+
+        case 1:
+            if (shape_timer > TRAVEL_DISTANCE_C) {
+                // transition to turn
+                spin_clockwise();
+                shape_display("Circle", "Turn");
+                step++;
+                shape_timer = 0;
+            }
+            break;
+
+        case 2:
+            if (shape_timer > LEFT_COUNT_TIME_C) {
+                shape_stop();
+            }
+            break;
+        }
+        break;
+
+    // =========================================================================
+    // TRIANGLE SHAPE
+    // =========================================================================
+    case SHAPE_TRIANGLE:
+
+        switch (step) {
+
+        case 0:
+            moveforward();
+            shape_display("Triangle", "Side 1");
+            step++;
+            shape_timer = 0;
+            break;
+
+        case 1:
+            if (shape_timer > TRAVEL_DISTANCE_T) {
+                // turn 60 degrees
+                spin_clockwise();
+                shape_display("Triangle", "Turn 1");
+                step++;
+                shape_timer = 0;
+            }
+            break;
+
+        case 2:
+            if (shape_timer > TURN_DISTANCE_T) {
+                moveforward();
+                shape_display("Triangle", "Side 2");
+                step++;
+                shape_timer = 0;
+            }
+            break;
+
+        case 3:
+            if (shape_timer > TRAVEL_DISTANCE_T) {
+                // turn 2
+                spin_clockwise();
+                shape_display("Triangle", "Turn 2");
+                step++;
+                shape_timer = 0;
+            }
+            break;
+
+        case 4:
+            if (shape_timer > TURN_DISTANCE_T) {
+                moveforward();
+                shape_display("Triangle", "Side 3");
+                step++;
+                shape_timer = 0;
+            }
+            break;
+
+        case 5:
+            if (shape_timer > TRAVEL_DISTANCE_T) {
+                shape_stop();
+            }
+            break;
+        }
+        break;
+
+    // =========================================================================
+    // FIGURE 8 SHAPE
+    // =========================================================================
+    case SHAPE_FIGURE8:
+        switch (step) {
+
+        case 0:
+            moveforward();
+            shape_display("Figure 8", "Segment 1");
+            step++;
+            shape_timer = 0;
+            break;
+
+        case 1:
+            if (shape_timer > TRAVEL_DISTANCE_8) {
+                spin_clockwise();
+                shape_display("Figure 8", "Turn 1");
+                step++;
+                shape_timer = 0;
+            }
+            break;
+
+        case 2:
+            if (shape_timer > RIGHT_COUNT_TIME_8) {
+                moveforward();
+                shape_display("Figure 8", "Segment 2");
+                step++;
+                shape_timer = 0;
+            }
+            break;
+
+        case 3:
+            if (shape_timer > TRAVEL_DISTANCE_8) {
+                spin_counterclockwise();
+                shape_display("Figure 8", "Turn 2");
+                step++;
+                shape_timer = 0;
+            }
+            break;
+
+        case 4:
+            if (shape_timer > LEFT_COUNT_TIME_8) {
+                shape_stop();
+            }
+            break;
+        }
+        break;
+
+    } // end switch(active_shape)
+
+} // end Shape_Update()

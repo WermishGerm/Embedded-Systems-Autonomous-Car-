@@ -1,0 +1,49 @@
+#include "msp430.h"
+#include <string.h>
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+#include "ports.h"
+
+volatile unsigned char display_changed = 1;
+
+extern char display_line[4][11];
+extern char *display[4];
+extern unsigned char event;
+extern unsigned long p7_timer_200ms;
+extern unsigned char p7_timer_enabled;
+
+void main(void){
+
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+
+    Init_Ports();
+    Init_Clocks();
+    Init_Conditions();
+    Init_LCD();
+    Init_Timers();
+    Init_ADC();
+    enable_interrupts();
+
+    event = NONE;
+
+    strcpy(display_line[0], "PROJECT 7 ");
+    strcpy(display_line[1], "READY     ");
+    strcpy(display_line[2], "PRESS SW1 ");
+    strcpy(display_line[3], "          ");
+    display_changed = 1;
+
+    while (1) {
+
+        Display_Process();
+
+        if (event == BLACK_LINE_FOLLOW)
+            blackline_state();
+
+        if (event == STOPALL)
+            stopall();
+
+        P3OUT ^= TEST_PROBE;
+    }
+}

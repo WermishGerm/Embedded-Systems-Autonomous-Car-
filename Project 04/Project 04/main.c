@@ -1,0 +1,136 @@
+//------------------------------------------------------------------------------
+// main.c
+//  Description: This file contains the Main Routine - "While" Operating System
+//
+//  Jim Carlson
+//  Jan 2023
+//  Built with Code Composer Version: CCS12.4.0.00007_win64
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+#include  "msp430.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+#include  "ports.h"
+
+
+
+// Function Prototypes
+void main(void);
+void Init_Conditions(void);
+void Display_Process(void);
+void Init_LEDs(void);
+void stopall(void);
+void moveforward(void);
+void Carlson_StateMachine(void);
+void wait_case(void);
+void start_case(void);
+void run_case(void);
+void end_case(void);
+void Run_Straight(void);
+
+// Global Variables
+volatile char slow_input_down;
+extern char display_line[FOURTH][ELEVENTH];
+extern char *display[FOURTH];
+unsigned char display_mode;
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+extern volatile unsigned int update_display_count;
+extern volatile unsigned int Time_Sequence;
+extern volatile char one_time;
+unsigned int test_value;
+char chosen_direction;
+char change;
+volatile unsigned int lt_stop;
+
+//project 03:
+unsigned int wheel_move;
+char forward;
+
+//project 04:
+unsigned int Last_Time_Sequence; // a variable to identify Time_Sequence has changed
+unsigned int cycle_time; // is a new time base used to control making shapes
+unsigned int time_change; // is an identifier that a change has occurred
+unsigned char event;
+
+
+
+//void main(void){
+void main(void){
+WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+
+//------------------------------------------------------------------------------
+// Main Program
+// This is the main routine for the program. Execution of code starts here.
+// The operating system is Back Ground Fore Ground.
+//
+//------------------------------------------------------------------------------
+  PM5CTL0 &= ~LOCKLPM5;
+// Disable the GPIO power-on default high-impedance mode to activate
+// previously configured port settings
+
+  Init_Ports();                        // Initialize Ports
+  Init_Clocks();                       // Initialize Clock System
+  Init_Conditions();                   // Initialize Variables and Initial Conditions
+  Init_Timers();                       // Initialize Timers
+  Init_LCD();                          // Initialize LCD
+//P2OUT &= ~RESET_LCD;
+  // Place the contents of what you want on the display, in between the quotes
+// Limited to 10 characters per line
+  strcpy(display_line[0], "   NCSU   ");
+  strcpy(display_line[1], " WOLFPACK ");
+  strcpy(display_line[2], "  ECE306  ");
+  strcpy(display_line[3], "  GP I/O  ");
+  strcpy(display_line[4], " Straight ");
+  strcpy(display_line[5], " Circle ");
+  strcpy(display_line[6], " Figure 8 ");
+  strcpy(display_line[7], " Triangle ");
+
+  display_changed = TRUE;
+//  Display_Update(0,0,0,0);
+
+  wheel_move = 0;
+  forward = TRUE;
+  event = NONE;
+
+
+//------------------------------------------------------------------------------
+// Begining of the "While" Operating System
+//------------------------------------------------------------------------------
+  while(ALWAYS) {                      // Can the Operating system run
+    //Run_Circle();
+    Carlson_StateMachine();            // Run a Time Based State Machine
+    Switches_Process();                // Check for switch state change
+    Display_Process();                 // Update Display
+    P3OUT ^= TEST_PROBE;               // Change State of TEST_PROBE OFF
+    if(Last_Time_Sequence != Time_Sequence){
+     Last_Time_Sequence = Time_Sequence;
+     cycle_time++;
+     time_change = 1;
+     }
+
+    switch(event){
+     case STRAIGHT: // Straight
+     Run_Straight();
+     break; //
+     case CIRCLE:
+     Run_Circle();
+     break;
+     case FIGURE8:
+     Run_Figure8();
+     break;
+     case TRIANGLE:
+     Run_Triangle();
+     break;
+     default:
+     stopall();
+     break;
+     }
+  }
+
+//------------------------------------------------------------------------------
+
+}

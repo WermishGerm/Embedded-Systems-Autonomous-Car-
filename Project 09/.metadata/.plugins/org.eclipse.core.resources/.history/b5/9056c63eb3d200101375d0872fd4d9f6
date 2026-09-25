@@ -1,0 +1,103 @@
+//------------------------------------------------------------------------------
+// main.c — Project 9 (Phase 1: UART Bridging + FRAM Commands)
+//------------------------------------------------------------------------------
+// Project 8 UART has been REMOVED.
+// Serial communication now handled entirely by IOTtrans.c
+//------------------------------------------------------------------------------
+
+
+#include "msp430.h"
+#include <string.h>
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+#include "ports.h"
+#include "IOTtrans.h"     // NEW Project 9 UART Engine
+
+//------------------------------------------------------------------------------
+// GLOBAL VARIABLES
+//------------------------------------------------------------------------------
+extern char display_line[FOURTH][ELEVENTH];
+extern char *display[FOURTH];
+
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+
+extern volatile unsigned int Time_Sequence;
+extern volatile char one_time;
+
+extern unsigned int cycle_time;
+extern unsigned int time_change;
+
+// Local variables
+unsigned int wheel_move;
+unsigned char forward;
+unsigned char event;
+
+//------------------------------------------------------------------------------
+// MAIN
+//------------------------------------------------------------------------------
+void main(void) {
+
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+
+    // -------------------------
+    // SYSTEM INITIALIZATION
+    // -------------------------
+    Init_Ports();
+    Init_Clocks();
+    Init_Conditions();
+    Init_LCD();
+    Init_Timers();
+    Init_ADC(); // Not used yet but safe
+
+    // -------------------------
+    // PROJECT 9 UART INITIALIZATION
+    // -------------------------
+    Init_UART_PC();               // UCA1 @ 115200 for PC Terminal
+    Init_UART_IOT(BAUD_115200);   // UCA0 @ 115200 for ESP32 Module
+
+    enable_interrupts();
+
+    // -------------------------
+    // INITIAL LCD
+    // -------------------------
+    strcpy(display_line[0], "Proj 9     ");
+    strcpy(display_line[1], "Phase 1    ");
+    strcpy(display_line[2], "UART Bridge");
+    strcpy(display_line[3], "Loopback   ");
+
+    display_changed = TRUE;
+    update_display = TRUE;
+
+    // Carlson timing vars
+    wheel_move = 0;
+    forward = TRUE;
+    event = 0;
+
+    // -------------------------
+    // MAIN LOOP
+    // -------------------------
+    while (1) {
+
+        // THE HEART OF PROJECT 9 PHASE 1
+        UART_Bridge_Process();   // PC <-> IOT bridging
+
+        // Project 8 UART REMOVED
+        // Serial_Process_RX();  <-- DELETE
+
+        // State machine (kept)
+        Carlson_StateMachine();
+
+        // Buttons (kept)
+        Switches_Process();
+
+        // LCD engine (kept)
+        Display_Process();
+        LCD_update();
+
+        // Debug heartbeat
+        P3OUT ^= TEST_PROBE;
+    }
+}

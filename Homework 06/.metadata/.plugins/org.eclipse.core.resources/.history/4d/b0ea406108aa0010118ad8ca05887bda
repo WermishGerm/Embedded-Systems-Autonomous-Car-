@@ -1,0 +1,73 @@
+/*
+ * timers.c
+ *
+ *  Created on: Oct 7, 2025
+ *      Author: jcont
+ */
+
+#include "msp430.h"
+#include "ports.h"
+#include "macros.h"
+
+extern volatile unsigned char backlight_state;
+extern volatile unsigned char sw1_debounce_in_progress;
+extern volatile unsigned char sw2_debounce_in_progress;
+extern volatile unsigned int sw1_debounce_count;
+extern volatile unsigned int sw2_debounce_count;
+
+void Init_TimerB0(void){
+    TB0CTL = TBSSEL__SMCLK | MC__CONTINUOUS | TBCLR | ID__2;
+    TB0EX0 = TBIDEX__8;
+
+    TB0CCR0 = TB0CCR0_INTERVAL;
+    TB0CCTL0 |= CCIE;       // Backlight
+
+    TB0CCR1 = TB0CCR1_INTERVAL;
+    TB0CCTL1 |= CCIE;       // SW1 debounce
+    TB0CCTL1 &= ~CCIE;      // disabled initially
+
+    TB0CCR2 = TB0CCR2_INTERVAL;
+    TB0CCTL2 |= CCIE;       // SW2 debounce
+    TB0CCTL2 &= ~CCIE;      // disabled initially
+}
+
+// Backlight blink
+#pragma vector = TIMER0_B0_VECTOR
+__interrupt void Timer0_B0_ISR(void){
+    TB0CCR0 += TB0CCR0_INTERVAL;
+    backlight_state ^= LCD_BACKLITE;
+    P6OUT ^= LCD_BACKLITE;
+}
+
+// SW1 and SW2 debounce
+#pragma vector = TIMER0_B1_VECTOR
+__interrupt void Timer0_B1_ISR(void){
+    switch(__even_in_range(TB0IV,14)){
+        case 0: break;
+        case 2:    // CCR1 - SW1 debounce
+            if(sw1_debounce_in_progress){
+                sw1_debounce_count++;
+                if(sw1_debounce_count >= DEBOUNCE_THRESHOLD){
+                    sw1_debounce_in_progress = FALSE;
+                    sw1_debounce_count = 0;
+                    P4IE |= SW1;     // re-enable SW1
+                }
+            } else {
+                TB0CCTL1 &= ~CCIE;
+            }
+            break;
+        case 4:    // CCR2 - SW2 debounce
+            if(sw2_debounce_in_progress){
+                sw2_debounce_count++;
+                if(sw2_debounce_count >= DEBOUNCE_THRESHOLD){
+                    sw2_debounce_in_progress = FALSE;
+                    sw2_debounce_count = 0;
+                    P2IE |= SW2;     // re-enable SW2
+                }
+            } else {
+                TB0CCTL2 &= ~CCIE;
+            }
+            break;
+        default: break;
+    }
+}

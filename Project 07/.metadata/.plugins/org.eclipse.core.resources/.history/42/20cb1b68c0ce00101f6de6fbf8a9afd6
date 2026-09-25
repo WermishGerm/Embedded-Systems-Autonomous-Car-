@@ -1,0 +1,100 @@
+/*
+ * macros.h
+ *
+ * PROJECT 7 – Embedded Systems (ECE 306)
+ * Fully rewritten for automatic calibration + P7 motion state machine
+ * Project 6 states removed entirely.
+ */
+
+#ifndef MACROS_H_
+#define MACROS_H_
+
+//========================================================
+// GENERAL CONSTANTS
+//========================================================
+#define ALWAYS          (1)
+#define TRUE            (1)
+#define FALSE           (0)
+#define RESET_STATE     (0)
+
+#define FOURTH          (4)
+#define ELEVENTH        (11)
+
+#define RED_LED         (0x01)
+#define GRN_LED         (0x40)
+
+#define MCLK_FREQ_MHZ   (8)
+
+//========================================================
+// PROJECT 7 STATES
+//========================================================
+// Calibration states
+#define P7_CAL_AMBIENT    (20)
+#define P7_CAL_WHITE      (21)
+#define P7_CAL_BLACK      (22)
+#define P7_READY          (23)
+
+// Motion states
+#define P7_INTERCEPT      (24)
+#define P7_TURN_ALIGN     (25)
+#define P7_CIRCLE1        (26)
+#define P7_CIRCLE2        (27)
+#define P7_TURN_IN        (28)
+#define P7_STOPPED        (29)
+
+//========================================================
+// PROJECT 7 GLOBAL VARIABLES
+//========================================================
+// These MUST be defined in exactly ONE .c file (main.c recommended)
+// and declared extern everywhere else.
+
+extern unsigned int ambient_left;
+extern unsigned int ambient_right;
+
+extern unsigned int white_left;
+extern unsigned int white_right;
+
+extern unsigned int black_left;
+extern unsigned int black_right;
+
+extern unsigned int left_threshold;
+extern unsigned int right_threshold;
+
+// Motion state
+extern unsigned char p7_state;
+
+// Timer for display (0.2 sec increments)
+extern float p7_timer;
+
+// Circle duration measurement (time-based method)
+extern unsigned int circle_time_counter;
+extern unsigned int one_circle_duration;
+
+// Generic delay counter for turn-in etc.
+extern unsigned int p7_delay;
+
+//========================================================
+// MOTOR SPEED CONSTANTS (unchanged per user request)
+//========================================================
+#define FAST   (1)
+#define MED    (0)
+
+//========================================================
+// PROJECT 7 PARAMETER CONSTANTS
+//========================================================
+#define INTERCEPT_TURN_DELAY     (200)  // Tuning parameter
+#define TURN_IN_DURATION         (300)
+#define MOVE_IN_DURATION         (300)
+
+//========================================================
+// LCD UPDATE TIMING
+//========================================================
+#define LCD_200MS_TICK      (40)     // 40 timer ticks ≈ 200ms
+
+//========================================================
+// UTILITY MACROS
+//========================================================
+#define min(a,b)  ((a) < (b) ? (a) : (b))
+#define max(a,b)  ((a) > (b) ? (a) : (b))
+
+#endif /* MACROS_H_ */

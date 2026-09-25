@@ -1,0 +1,78 @@
+#include "msp430.h"
+#include "functions.h"
+#include "macros.h"
+#include "LCD.h"
+#include "ports.h"
+
+// Globals used by LCD system
+extern char display_line[4][11];
+extern char *display[4];
+extern volatile unsigned char display_changed;
+
+extern volatile unsigned int Time_Sequence;
+extern volatile unsigned int update_display_count;
+
+// State Machine Globals
+extern volatile unsigned int state;
+extern volatile unsigned int event;
+
+// Serial Globals
+extern volatile unsigned int usb_rx_ring_wr;
+extern volatile unsigned int usb_rx_ring_rd;
+
+// Function Prototypes
+void Init_Conditions(void);
+void clear_display(void);
+
+// ---------------------------------------------------------------------------
+// MAIN PROGRAM LOOP
+// ---------------------------------------------------------------------------
+int main(void) {
+
+  WDTCTL = WDTPW | WDTHOLD; // Stop watchdog
+
+  Init_Ports();             // GPIO + SPI + UART pins
+  Init_Clocks();            // MCLK/SMCLK setup
+  Init_Conditions();        // Variables cleared
+  Init_LCD();               // LCD powered + SPI started
+  Init_Timers();            // PWM + Timer interrupts
+  Init_ADC();               // Sensor inputs
+  Init_Serial_UCA1(FAST);   // UART for PC/AD2 communication
+  Init_Switches();          // SW1/SW2
+
+  enable_interrupts();      // CPU enters normal operation
+
+  // -------------------------------------------------------------------------
+  // LCD Startup Messages (IMPORTANT: uses old Display_Process system)
+  // -------------------------------------------------------------------------
+  clear_display();
+
+  strcpy(display_line[0], "Project 8");
+  strcpy(display_line[1], "Serial Ready");
+  strcpy(display_line[2], "LCD OK");
+  strcpy(display_line[3], "Waiting Cmd");
+  display_changed = TRUE;
+
+  // -------------------------------------------------------------------------
+  // MAIN LOOP
+  // -------------------------------------------------------------------------
+  while (ALWAYS) {
+
+    // LCD Update System (old ECE-306 method)
+    Display_Process();
+
+    // State Machine (movement)
+    Carlson_StateMachine();
+
+    // Serial processing
+    Serial_Process();
+
+    // Other subsystems
+    Switches_Process();
+    ADC_Process();
+  }
+
+}
+
+
+

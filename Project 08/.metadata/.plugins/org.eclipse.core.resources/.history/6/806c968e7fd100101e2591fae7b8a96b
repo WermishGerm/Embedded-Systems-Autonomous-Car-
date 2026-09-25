@@ -1,0 +1,148 @@
+
+#include "msp430.h"
+#include <string.h>
+#include "serial.h"
+#include "functions.h"
+#include "macros.h"
+
+volatile unsigned char UCA1_RX_Buffer[RX_RING_SIZE];
+volatile unsigned int uca1_rx_wr = 0, uca1_rx_rd = 0;
+
+volatile unsigned char UCA1_TX_Buffer[TX_RING_SIZE];
+volatile unsigned int uca1_tx_wr = 0, uca1_tx_rd = 0;
+
+char prev_usb = 0;
+unsigned char cmd = 0;
+
+void Init_Serial_UCA1(void) {
+
+  UCA1CTLW0 |= UCSWRST;
+  UCA1CTLW0 |= UCSSEL__SMCLK;
+
+  UCA1BRW = 4;            // 115200
+  UCA1MCTLW = 0x5551;
+
+  UCA1CTLW0 &= ~UCSWRST;
+  UCA1IE |= UCRXIE;
+}
+
+void UCA1_Send_Char(char c){
+  unsigned int next = (uca1_tx_wr + 1) % TX_RING_SIZE;
+  if(next == uca1_tx_rd) return;
+
+  UCA1_TX_Buffer[uca1_tx_wr] = c;
+  uca1_tx_wr = next;
+
+  UCA1IE |= UCTXIE;
+}
+
+void UCA1_Send_String(char *s){
+  while(*s) UCA1_Send_Char(*s++);
+}
+
+void Serial_Process_PC(void){
+
+  while(uca1_rx_rd != uca1_rx_wr){
+
+    char c = UCA1_RX_Buffer[uca1_rx_rd];
+    uca1_rx_rd = (uca1_rx_rd + 1) % RX_RING_SIZE;
+
+    if(prev_usb == '^'){
+        cmd = c;
+        prev_usb = 0;
+        commands();
+        continue;
+    }
+
+    if(c == '^'){
+        prev_usb = '^';
+        continue;
+    }
+
+    UCA1_Send_Char(c);  // echo
+  }
+}
+
+void commands(void){
+
+  switch(cmd){
+
+    case '^':
+      UCA1_Send_String("Alive\r\n");
+      break;
+
+    case 'H':
+      UCA1_Send_String("Hello MSP430!\r\n");
+      break;
+
+    case 'F':   // forward
+      moveforward();
+      UCA1_Send_String("Forward\r\n");
+      break;
+
+    case 'B':   // backward
+      movebackward();
+      UCA1_Send_String("Backward\r\n");
+      break;
+
+    case 'L':   // left spin
+      turnleft();
+      UCA1_Send_String("Left\r\n");
+      break;
+
+    case 'R':   // right spin
+      turnright();
+      UCA1_Send_String("Right\r\n");
+      break;
+
+    case 'S':   // stop
+      stopall();
+      UCA1_Send_String("Stop\r\n");
+      break;
+
+//    case 'C':   // circle
+//      UCA1_Send_String("Circle\r\n");
+//      nextState = CIRCLE;
+//      break;
+//
+//    case 'T':   // triangle
+//      UCA1_Send_String("Triangle\r\n");
+//      nextState = TRIANGLE;
+//      break;
+//
+//    case '8':   // figure-8
+//      UCA1_Send_String("Figure 8\r\n");
+//      nextState = FIGURE8;
+//      break;
+
+    default:
+      UCA1_Send_String("Unknown command\r\n");
+      break;
+  }
+}
+
+#pragma vector = EUSCI_A1_VECTOR
+__interrupt void eUSCI_A1_ISR(void){
+
+  switch(__even_in_range(UCA1IV,0x08)) {
+
+    case 2: {
+      char c = UCA1RXBUF;
+      unsigned int next = (uca1_rx_wr + 1) % RX_RING_SIZE;
+      if(next != uca1_rx_rd){
+        UCA1_RX_Buffer[uca1_rx_wr] = c;
+        uca1_rx_wr = next;
+      }
+    } break;
+
+    case 4: {
+      if(uca1_tx_rd != uca1_tx_wr){
+        UCA1TXBUF = UCA1_TX_Buffer[uca1_tx_rd];
+        uca1_tx_rd = (uca1_tx_rd + 1) % TX_RING_SIZE;
+      } else {
+        UCA1IE &= ~UCTXIE;
+      }
+    } break;
+
+  }
+}

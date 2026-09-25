@@ -1,0 +1,106 @@
+/*
+ * switches.c
+ *
+ * Modified for Homework 08 – Serial Baud Rate Control
+ */
+
+#include  "msp430.h"
+#include  "ports.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include  "macros.h"
+#include  "serial.h"     // <<< REQUIRED FOR HOMEWORK 08 >>>
+
+unsigned char sw1_position;
+unsigned char sw2_position;
+
+unsigned char okay_switch1;
+unsigned char okay_switch2;
+
+unsigned int count_debounce_SW1;
+unsigned int count_debounce_SW2;
+
+extern char display_line[4][11];
+extern volatile unsigned int lt_stop;
+unsigned int shapes_menu = 0;
+extern unsigned char event;
+unsigned char shape_on_screen;
+
+extern volatile unsigned char display_changed;
+extern unsigned int delay_start;
+extern unsigned char search_state;
+
+void Switches_Process(void){
+  Switch1_Process();
+  Switch2_Process();
+}
+
+void Switch1_Process(void){
+
+  if (okay_switch1){
+    if (!(P4IN & SW1)) {  // button pressed
+      sw1_position = PRESSED;
+      okay_switch1 = NOT_OKAY;
+      count_debounce_SW1 = DEBOUNCE_RESTART;
+
+      Serial_Set_Baud_115200();
+
+      strcpy(display_line[0], "           ");
+      strcpy(display_line[1], "           ");
+      strcpy(display_line[2], "    Baud   ");
+      strcpy(display_line[3], " 115,200   ");
+      display_changed = TRUE;
+      lcd_4line();
+
+      five_msec_sleep(400);
+      Serial_Send_String("NCSU  #1");
+
+      return;
+    }
+  }
+
+  if (count_debounce_SW1 <= DEBOUNCE_TIME){
+    count_debounce_SW1++;
+  } else {
+    okay_switch1 = OKAY;
+    if (P4IN & SW1){
+      sw1_position = RELEASED;
+    }
+  }
+}
+
+
+void Switch2_Process(void){
+
+  if (okay_switch2){
+    if (!(P2IN & SW2)) {
+      sw2_position = PRESSED;
+      okay_switch2 = NOT_OKAY;
+      count_debounce_SW2 = DEBOUNCE_RESTART;
+
+      Serial_Set_Baud_460800();
+
+      strcpy(display_line[0], "           ");
+      strcpy(display_line[1], "           ");
+      strcpy(display_line[2], "    Baud   ");
+      strcpy(display_line[3], " 460,800   ");
+      display_changed = TRUE;
+      lcd_4line();
+
+      five_msec_sleep(400);
+      Serial_Send_String("NCSU  #1");
+
+      return;
+    }
+  }
+
+  if (count_debounce_SW2 <= DEBOUNCE_TIME){
+    count_debounce_SW2++;
+  } else {
+    okay_switch2 = OKAY;
+    if (P2IN & SW2){
+      sw2_position = RELEASED;
+    }
+  }
+}

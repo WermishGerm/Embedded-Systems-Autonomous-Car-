@@ -1,0 +1,130 @@
+/*
+ * serial.c
+ *
+ *  Created on: Dec 4, 2025
+ *      Author: jcont
+ */
+
+#include  "msp430.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+#include  "ports.h"
+#include "serial.h"
+
+
+volatile char usb_rx = 0;
+volatile unsigned char serial_rx_flag = 0;
+
+// -------------------------------------------------
+// Initialize PC UART (UCA0)
+// -------------------------------------------------
+void Init_Serial_UCA0(void) {
+    UCA0CTLW0  = UCSWRST;        // Reset
+    UCA0CTLW0 |= UCSSEL__SMCLK;  // SMCLK
+
+    UCA0BRW   = BAUD_115200_BRW;
+    UCA0MCTLW = BAUD_115200_MCTLW;
+
+    UCA0CTLW0 &= ~UCSWRST;       // Enable UART
+    UCA0IE |= UCRXIE;            // Enable RX interrupt
+}
+
+// -------------------------------------------------
+// Initialize internal loopback UART (UCA1)
+// -------------------------------------------------
+void Init_Serial_UCA1(void) {
+    UCA1CTLW0  = UCSWRST;
+    UCA1CTLW0 |= UCSSEL__SMCLK;
+
+    UCA1BRW   = BAUD_115200_BRW;
+    UCA1MCTLW = BAUD_115200_MCTLW;
+
+    UCA1CTLW0 &= ~UCSWRST;
+    UCA1IE |= UCRXIE;            // Enable RX interrupt
+}
+
+// -------------------------------------------------
+// Set both UARTs to 115200
+// -------------------------------------------------
+void Serial_Set_Baud_115200(void) {
+    UCA0CTLW0 |= UCSWRST;
+    UCA0BRW = BAUD_115200_BRW;
+    UCA0MCTLW = BAUD_115200_MCTLW;
+    UCA0CTLW0 &= ~UCSWRST;
+
+    UCA1CTLW0 |= UCSWRST;
+    UCA1BRW = BAUD_115200_BRW;
+    UCA1MCTLW = BAUD_115200_MCTLW;
+    UCA1CTLW0 &= ~UCSWRST;
+}
+
+// -------------------------------------------------
+// Set both UARTs to 460800
+// -------------------------------------------------
+void Serial_Set_Baud_460800(void) {
+    UCA0CTLW0 |= UCSWRST;
+    UCA0BRW = BAUD_460800_BRW;
+    UCA0MCTLW = BAUD_460800_MCTLW;
+    UCA0CTLW0 &= ~UCSWRST;
+
+    UCA1CTLW0 |= UCSWRST;
+    UCA1BRW = BAUD_460800_BRW;
+    UCA1MCTLW = BAUD_460800_MCTLW;
+    UCA1CTLW0 &= ~UCSWRST;
+}
+
+// -------------------------------------------------
+// Send string over PC UART (UCA0)
+// -------------------------------------------------
+void Serial_Send_String(char *s) {
+    while (*s) {
+        while (!(UCA0IFG & UCTXIFG));
+        UCA0TXBUF = *s++;
+    }
+}
+
+// -------------------------------------------------
+// ISR for PC UART (UCA0)
+// -------------------------------------------------
+#pragma vector = EUSCI_A0_VECTOR
+__interrupt void eUSCI_A0_ISR(void) {
+
+    switch (__even_in_range(UCA0IV, 0x08)) {
+
+    case 2: // RXIFG
+        usb_rx = UCA0RXBUF;
+        serial_rx_flag = 1;
+
+        // Forward to UCA1
+        UCA1TXBUF = usb_rx;
+
+    // Display on LCD
+      display_line[0][0] = usb_rx;
+      display_line[0][1] = '\0';
+      display_changed = TRUE;
+        break;
+
+    default:
+        break;
+    }
+}
+
+// -------------------------------------------------
+// ISR for Loopback UART (UCA1)
+// -------------------------------------------------
+#pragma vector = EUSCI_A1_VECTOR
+__interrupt void eUSCI_A1_ISR(void) {
+
+    switch (__even_in_range(UCA1IV, 0x08)) {
+
+    case 2: // RXIFG
+        // Forward to PC
+        UCA0TXBUF = UCA1RXBUF;
+        break;
+
+    default:
+        break;
+    }
+}

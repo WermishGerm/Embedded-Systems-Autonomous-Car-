@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<projectOptions>
+    <deviceVariant value="MSP430FR2355"/>
+    <deviceFamily value="MSP430"/>
+    <deviceEndianness value="little"/>
+    <isElfFormat value="true"/>
+    <codegenToolVersion value="21.6.0.LTS"/>
+    <isLegacyCIOType value="false"/>
+    <rts value="libc.a"/>
+    <templateProperties value=""/>
+    <createSlaveProjects value=""/>
+    <isTargetManual value="false"/>
+    <outputType value="executable"/>
+    <linkerCommandFile value="lnk_msp430fr2355.cmd"/>
+    <compiler buildId="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.compilerRelease.1816379720"/>
+    <linker buildId="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.linkerRelease.1306131027"/>
+    <enableManagedBuild value="true"/>
+    <isHardwareDebuggingEnabled value="true"/>
+    <uCProbeEnabled value="false"/>
+    <templateID value="com.ti.ccstudio.project.templates.emptyProjectTemplate"/>
+    <filesToOpen value="main.c"/>
+    <origin value="UserGenerated"/>
+</projectOptions>

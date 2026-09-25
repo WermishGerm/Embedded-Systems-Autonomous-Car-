@@ -1,0 +1,100 @@
+// ============================================================================
+// main.c — Project 09 Final Integrated Source
+//
+// Includes:
+//  • UART bridge (PC <-> ESP32 WiFi Module)
+//  • +IPD WiFi message parsing
+//  • Secure & insecure command handlers
+//  • PWM movement engine (movement.c)
+//  • LCD display system
+//  • Legacy Carlson timing system preserved (LED blink)
+// ============================================================================
+
+#include "msp430.h"
+#include <string.h>
+
+#include "functions.h"
+#include "LCD.h"
+#include "macros.h"
+#include "ports.h"
+
+#include "IOTtrans.h"
+#include "command_parser.h"
+#include "movement.h"
+
+// Carlson functions (from original project)
+extern void Init_Ports(void);
+extern void Init_Clocks(void);
+extern void Init_Conditions(void);
+extern void Init_LCD(void);
+extern void Init_Timers(void);
+extern void Carlson_StateMachine(void);
+extern void Display_Process(void);
+
+// LCD globals
+extern char display_line[4][11];
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+
+// ============================================================================
+// MAIN
+// ============================================================================
+void main(void) {
+
+    WDTCTL = WDTPW | WDTHOLD;   // Stop watchdog
+    PM5CTL0 &= ~LOCKLPM5;       // Enable GPIO
+
+    // -------------------------------
+    // SYSTEM INIT
+    // -------------------------------
+    Init_Ports();
+    Init_Clocks();
+    Init_Conditions();
+    Init_LCD();
+    Init_Timers();
+
+    Init_UART_PC();             // UCA1 (USB)
+    Init_UART_IOT(BAUD_115200); // UCA0 (ESP32 IOT module)
+
+    movement_init();            // NEW movement engine
+    command_parser_init();      // NEW command parser
+
+    enable_interrupts();
+
+    // -------------------------------
+    // INITIAL LCD DISPLAY
+    // -------------------------------
+    strcpy(display_line[0], " Project 9 ");
+    strcpy(display_line[1], "  Waiting  ");
+    strcpy(display_line[2], " Commands  ");
+    strcpy(display_line[3], "   WiFi    ");
+
+    display_changed = TRUE;
+    update_display = TRUE;
+
+    // -------------------------------
+    // MAIN LOOP
+    // -------------------------------
+    while (1) {
+        P6OUT ^= GRN_LED;
+
+        // UART bridge UCA1 <-> UCA0
+        UART_Bridge_Process();
+
+        // Handle WiFi +IPD commands, secure commands, etc.
+        // (Already handled inside IOTtrans ISR + command parser)
+
+        // NEW movement engine
+        movement_update();
+
+        // Carlson timing + LEDs
+        Carlson_StateMachine();
+
+        // LCD maintenance
+        Display_Process();
+        LCD_update();
+
+        // Test probe
+        P3OUT ^= TEST_PROBE;
+    }
+}

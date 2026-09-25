@@ -1,0 +1,67 @@
+
+#include "msp430.h"
+#include "functions.h"
+#include "macros.h"
+#include "serial.h"
+#include "ports.h"
+#include "LCD.h"
+
+volatile char slow_input_down;
+extern char display_line[FOURTH][ELEVENTH];
+extern char *display[FOURTH];
+unsigned char display_mode;
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+extern volatile unsigned int update_display_count;
+extern volatile unsigned int Time_Sequence;
+extern volatile char one_time;
+unsigned int test_value;
+volatile char control_state[7];
+unsigned int Last_Time_Sequence;
+unsigned int wheel_move;
+unsigned char forward;
+unsigned char event;
+unsigned int event_count;
+
+extern unsigned int cycle_time;    // Defined in states.c
+extern unsigned int time_change;   // Defined in states.c
+
+void main(void) {
+
+  WDTCTL = WDTPW | WDTHOLD;
+  PM5CTL0 &= ~LOCKLPM5;
+
+  Init_Ports();
+  Init_Clocks();
+  Init_Timers();
+  Init_LCD();
+  Init_ADC();
+
+  Init_Serial_UCA1();
+
+  __enable_interrupt();
+
+  clear_display();
+  strcpy(display_line[0], "   Project 8  ");
+  strcpy(display_line[1], " Full System  ");
+  strcpy(display_line[2], "  Integrated  ");
+  strcpy(display_line[3], "    Ready     ");
+  update_display();
+
+  five_msec_sleep(200);
+
+  clear_display();
+  strcpy(display_line[0], "ADC Ready   ");
+  strcpy(display_line[1], "Motors Ready");
+  strcpy(display_line[2], "Serial Ready");
+  strcpy(display_line[3], "            ");
+  update_display();
+
+  while(1) {
+
+    Serial_Process_PC();      // AD2/PC serial commands (^H, ^^, movement commands)
+    Switches_Process();       // Debounced switch logic
+    Carlson_StateMachine();   // Full motion/shape controller
+    ADC_Process();            // Your ADC loop (if implemented)
+  }
+}

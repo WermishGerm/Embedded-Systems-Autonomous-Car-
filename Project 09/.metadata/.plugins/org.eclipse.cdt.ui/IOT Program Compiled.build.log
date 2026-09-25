@@ -1,0 +1,8 @@
+
+**** Build of configuration Debug for project IOT Program Compiled ****
+
+"D:\\ccs\\utils\\bin\\gmake" -k -j 16 all -O 
+ 
+gmake[1]: 'IOT Program Compiled.out' is up to date.
+
+**** Build Finished ****

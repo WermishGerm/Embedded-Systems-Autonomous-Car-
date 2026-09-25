@@ -1,0 +1,121 @@
+//------------------------------------------------------------------------------
+// main.c (Modified for Project 8 Serial Mode)
+//------------------------------------------------------------------------------
+
+#include  "msp430.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+#include  "ports.h"
+#include  "serial.h"      // >>> PROJECT 8 ADD
+
+// Function Prototypes
+void main(void);
+void Init_Conditions(void);
+void Display_Process(void);
+void Init_LEDs(void);
+void stopall(void);
+void moveforward(void);
+void Carlson_StateMachine(void);
+void wait_case(void);
+void start_case(void);
+void run_case(void);
+void end_case(void);
+void Run_Straight(void);
+void Run_Circle(void);
+void Run_Figure8(void);
+void LCD_update(void);
+void Init_ADC(void);
+void Run_Triangle(void);
+void blackline_state(void);
+
+// Global Variables
+volatile char slow_input_down;
+extern char display_line[FOURTH][ELEVENTH];
+extern char *display[FOURTH];
+unsigned char display_mode;
+extern volatile unsigned char display_changed;
+extern volatile unsigned char update_display;
+extern volatile unsigned int update_display_count;
+extern volatile unsigned int Time_Sequence;
+extern volatile char one_time;
+unsigned int test_value;
+volatile char control_state[7];
+unsigned int Last_Time_Sequence;
+unsigned int wheel_move;
+unsigned char forward;
+unsigned char event;
+unsigned int event_count;
+
+extern unsigned int cycle_time;
+extern unsigned int time_change;
+
+extern volatile unsigned char serial_test_mode;   // >>> PROJECT 8 ADD
+
+void main(void){
+  WDTCTL = WDTPW | WDTHOLD;
+  PM5CTL0 &= ~LOCKLPM5;
+  Init_Ports();
+  Init_Clocks();
+  Init_Conditions();
+  Init_LCD();
+  Init_Timers();
+  Init_ADC();
+  enable_interrupts();
+
+  // --- Add this short delay to ensure DCO/FLL is stable:
+  __delay_cycles(8000000);   // 1 ms @ 8 MHz
+  Init_Serial();              // >>> PROJECT 8 ADD
+
+  serial_test_mode = 1;  // enable project 8 mode
+
+
+  // ---------------------------------------------------------
+  // PROJECT 8 STARTUP SCREEN
+  // ---------------------------------------------------------
+  serial_test_mode = 1;   // >>> PROJECT 8 Serial Mode ON
+  strcpy(display_line[0], "           ");
+  strcpy(display_line[1], "  Proj 8   ");    // >>> changed from Proj 6
+  strcpy(display_line[2], "           ");
+  strcpy(display_line[3], "           ");
+
+  update_string(display_line[LINE1], LINE1);
+  update_string(display_line[LINE2], LINE2);
+
+  // Serial default baud display
+  strcpy(display_line[LINE1], "Waiting   ");
+  strcpy(display_line[LINE3], "9600      ");
+  update_string(display_line[LINE1], LINE1);
+  update_string(display_line[LINE3], LINE3);
+  // ---------------------------------------------------------
+
+  display_changed = TRUE;
+
+  wheel_move = 0;
+  forward = TRUE;
+  event = STRAIGHT;
+
+  while(ALWAYS) {
+
+    // PROJECT 8 ACTIVE
+    if (serial_test_mode) {
+        Serial_Process_RX();     // >>> PROJECT 8 ADD
+        LCD_update();
+        continue;                // >>> prevents car from moving
+    }
+
+    // ORIGINAL PROJECT 6/7 CODE BELOW
+    Carlson_StateMachine();
+    Switches_Process();
+    Display_Process();
+    P3OUT ^= TEST_PROBE;
+
+    if(event == BLACK_LINE_FOLLOW){
+       blackline_state();
+       Update_Blackline_Display();
+    }
+
+    LCD_update();
+  }
+}

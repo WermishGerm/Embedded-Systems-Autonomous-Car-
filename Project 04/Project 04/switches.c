@@ -1,0 +1,127 @@
+/*
+ * switches.c
+ *
+ *  Created on: Oct 1, 2025
+ *      Author: Juan Contreras
+ *
+ *  List of switches used to cycle through getting shapes
+ *
+ */
+#include  "msp430.h"
+#include "ports.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+
+unsigned char sw1_position;
+unsigned char sw2_position;
+
+unsigned char okay_switch1;
+unsigned char okay_switch2;
+
+unsigned int count_debounce_SW1;
+unsigned int count_debounce_SW2;
+
+extern char display_line[4][11];
+extern volatile unsigned int lt_stop;
+unsigned int shapes_menu = 0;
+extern unsigned char event;
+unsigned char shape_on_screen;
+
+extern volatile unsigned char display_changed;
+
+void Switches_Process(void){
+// This function calls the individual Switch Functions
+ Switch1_Process();
+ Switch2_Process();
+}
+
+void Switch1_Process(void){
+// Switch 1 Configurations (Port P4 Pin 1)
+  if (okay_switch1 && sw1_position){
+    if (!(P4IN & SW1)){              // button pressed (active low)
+      sw1_position = PRESSED;
+      okay_switch1 = NOT_OKAY;
+      count_debounce_SW1 = DEBOUNCE_RESTART;
+      lt_stop = 1;
+
+      // Cycle through shapes in order: Circle -> Figure8 -> Triangle -> repeat
+      shapes_menu++;
+      if (shapes_menu > 2){
+          shapes_menu = 0;
+      }
+
+      switch (shapes_menu){
+        case 0:
+          shape_on_screen = CIRCLE;
+          strcpy(display_line[0], "           ");
+          strcpy(display_line[1], "  CIRCLE   ");
+          strcpy(display_line[2], "           ");
+          strcpy(display_line[3], "           ");
+          break;
+
+        case 1:
+          shape_on_screen = FIGURE8;
+          strcpy(display_line[0], "           ");
+          strcpy(display_line[1], " FIGURE 8  ");
+          strcpy(display_line[2], "           ");
+          strcpy(display_line[3], "           ");
+          break;
+
+        case 2:
+          shape_on_screen = TRIANGLE;
+          strcpy(display_line[0], "           ");
+          strcpy(display_line[1], " TRIANGLE  ");
+          strcpy(display_line[2], "           ");
+          strcpy(display_line[3], "           ");
+          break;
+      }
+
+      lcd_4line();
+      display_changed = TRUE;
+    }
+  }
+
+  // Debounce logic
+  if (count_debounce_SW1 <= DEBOUNCE_TIME){
+    count_debounce_SW1++;
+  } else {
+    okay_switch1 = OKAY;
+    if (P4IN & SW1){
+      sw1_position = RELEASED;
+    }
+  }
+}
+
+void Switch2_Process(void){
+// Switch 2 Configurations (Port P2 Pin 3)
+ if (okay_switch2 && sw2_position){
+   if (!(P2IN & SW2)){              // button pressed (active low)
+     sw2_position = PRESSED;
+     okay_switch2 = NOT_OKAY;
+     count_debounce_SW2 = DEBOUNCE_RESTART;
+
+     // Run selected shape
+     if (shape_on_screen == CIRCLE){
+       event = CIRCLE;
+     }
+     if (shape_on_screen == FIGURE8){
+       event = FIGURE8;
+     }
+     if (shape_on_screen == TRIANGLE){
+       event = TRIANGLE;
+     }
+   }
+ }
+
+ // Debounce logic
+ if (count_debounce_SW2 <= DEBOUNCE_TIME){
+   count_debounce_SW2++;
+ } else {
+   okay_switch2 = OKAY;
+   if (P2IN & SW2){
+     sw2_position = RELEASED;
+   }
+ }
+}

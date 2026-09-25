@@ -1,0 +1,194 @@
+/*
+ * IOTTrans.c
+ *
+ *  Created on: Dec 6, 2025
+ *      Author: jcont
+ */
+
+
+
+#include "functions.h"
+
+#include "ports.h"
+#include "serial.h"
+
+
+// ============================================================================
+// IOTtrans.c — Project 09 UART Bridge + +IPD Parser + Secure Command Protocol
+// Author: Juan Contreras-Flores
+// ============================================================================
+
+#include "msp430.h"
+#include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+#include "IOTtrans.h"
+#include "command_parser.h"
+#include "movement.h"
+#include "LCD.h"
+#include "macros.h"
+
+// ============================================================================
+// RING BUFFERS
+// ============================================================================
+#define RING_SIZE 128
+
+volatile char pc_to_iot[RING_SIZE];
+volatile char iot_to_pc[RING_SIZE];
+
+volatile uint16_t pc_iot_head = 0;
+volatile uint16_t pc_iot_tail = 0;
+
+volatile uint16_t iot_pc_head = 0;
+volatile uint16_t iot_pc_tail = 0;
+
+// ============================================================================
+// INTERNAL BUFFERS FOR WIFI PROCESSING
+// ============================================================================
+static char wifi_rx_buffer[256];
+static uint16_t wifi_rx_index = 0;
+
+// ============================================================================
+// UART INITIALIZATION
+// ============================================================================
+
+// -------- PC UART (UCA1) @ 115200 --------
+void Init_UART_PC(void) {
+    UCA1CTLW0 = UCSWRST;
+    UCA1CTLW0 |= UCSSEL__SMCLK;
+
+    UCA1BRW = 4;
+    UCA1MCTLW = 0x5551;
+
+    UCA1CTLW0 &= ~UCSWRST;
+    UCA1IE |= UCRXIE;
+}
+
+// -------- IOT UART (UCA0) @ 115200 --------
+void Init_UART_IOT(uint8_t baud_mode) {
+    UCA0CTLW0 = UCSWRST;
+    UCA0CTLW0 |= UCSSEL__SMCLK;
+
+    UCA0BRW = 4;
+    UCA0MCTLW = 0x5551;
+
+    UCA0CTLW0 &= ~UCSWRST;
+    UCA0IE |= UCRXIE;
+}
+
+// ============================================================================
+// UART TRANSMIT HELPERS
+// ============================================================================
+static void UART_PC_TX(char c) {
+    while (!(UCA1IFG & UCTXIFG));
+    UCA1TXBUF = c;
+}
+
+static void UART_IOT_TX(char c) {
+    while (!(UCA0IFG & UCTXIFG));
+    UCA0TXBUF = c;
+}
+
+// ============================================================================
+// WIFI PACKET PARSER: +IPD FRAME
+//
+// Example frame:
+// +IPD,0,13:Hello World\r\n
+//
+// Our goal:
+// Extract "Hello World" and pass to command_parser_process()
+// ============================================================================
+static void process_wifi_message(char *msg) {
+
+    // Look for +IPD prefix
+    if (strncmp(msg, "+IPD", 4) != 0) {
+        // Not WiFi framed — treat as normal insecure command
+        command_parser_process(msg);
+        return;
+    }
+
+    // Find the colon (start of payload)
+    char *colon = strchr(msg, ':');
+    if (!colon) return;
+
+    // Payload starts just after colon
+    char *payload = colon + 1;
+
+    // Remove CRLF
+    char cleaned[128];
+    strncpy(cleaned, payload, sizeof(cleaned));
+    cleaned[127] = '\0';
+
+    char *end = strchr(cleaned, '\r');
+    if (end) *end = '\0';
+    end = strchr(cleaned, '\n');
+    if (end) *end = '\0';
+
+    // Now we have the REAL command: "F2" or "F2 R90 L45"
+    command_parser_process(cleaned);
+}
+
+// ============================================================================
+// UCA1 ISR — PC Terminal Input
+// ============================================================================
+#pragma vector = EUSCI_A1_VECTOR
+__interrupt void EUSCI_A1_ISR(void) {
+
+    if (UCA1IFG & UCRXIFG) {
+        char c = UCA1RXBUF;
+
+        // Forward PC input directly to IOT
+        pc_to_iot[pc_iot_head] = c;
+        pc_iot_head = (pc_iot_head + 1) & (RING_SIZE - 1);
+    }
+}
+
+// ============================================================================
+// UCA0 ISR — IOT MODULE INPUT (WiFi messages)
+// ============================================================================
+#pragma vector = EUSCI_A0_VECTOR
+__interrupt void EUSCI_A0_ISR(void) {
+
+    if (UCA0IFG & UCRXIFG) {
+        char c = UCA0RXBUF;
+
+        // Accumulate into WiFi receive buffer
+        if (wifi_rx_index < sizeof(wifi_rx_buffer) - 1) {
+            wifi_rx_buffer[wifi_rx_index++] = c;
+        }
+
+        // End of message?
+        if (c == '\n') {
+            wifi_rx_buffer[wifi_rx_index] = '\0';
+
+            // Process the complete message
+            process_wifi_message(wifi_rx_buffer);
+
+            // Reset for next message
+            wifi_rx_index = 0;
+        }
+
+        // Still bridge everything back to PC
+        iot_to_pc[iot_pc_head] = c;
+        iot_pc_head = (iot_pc_head + 1) & (RING_SIZE - 1);
+    }
+}
+
+// ============================================================================
+// UART BRIDGE — Called in main loop
+// ============================================================================
+void UART_Bridge_Process(void) {
+
+    // PC → IOT
+    while (pc_iot_tail != pc_iot_head) {
+        UART_IOT_TX(pc_to_iot[pc_iot_tail]);
+        pc_iot_tail = (pc_iot_tail + 1) & (RING_SIZE - 1);
+    }
+
+    // IOT → PC
+    while (iot_pc_tail != iot_pc_head) {
+        UART_PC_TX(iot_to_pc[iot_pc_tail]);
+        iot_pc_tail = (iot_pc_tail + 1) & (RING_SIZE - 1);
+    }
+}

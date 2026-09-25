@@ -1,0 +1,34 @@
+/*
+ * serial.h
+ *
+ *  Created on: Dec 4, 2025
+ *      Author: jcont
+ */
+
+#ifndef SERIAL_H_
+#define SERIAL_H_
+
+#include <msp430.h>
+
+// ------------ Globals ---------------
+extern volatile char usb_rx;
+extern volatile unsigned char serial_rx_flag;
+
+// ------------ Function Prototypes ---------------
+void Init_Serial_UCA1(void);
+void Init_Serial_UCA0(void);
+
+void Serial_Set_Baud_115200(void);
+void Serial_Set_Baud_460800(void);
+
+void Serial_Send_String(char *s);
+
+#define BAUD_115200_BRW     4
+#define BAUD_115200_MCTLW   0x55
+
+// These are example values — Carlson’s slides use UCOS16 = 1 with calculated UCx tables.
+// They work perfectly at SMCLK = 8 MHz.
+#define BAUD_460800_BRW     1
+#define BAUD_460800_MCTLW   0x4A    // Oversample OFF at high speeds
+
+#endif /* SERIAL_H_ */

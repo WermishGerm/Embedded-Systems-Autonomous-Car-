@@ -1,0 +1,40 @@
+#include  "msp430.h"
+#include "ports.h"
+#include  <string.h>
+#include  "functions.h"
+#include  "LCD.h"
+#include "macros.h"
+
+
+// 0–1000 = 0–100% speed
+
+void stopall(void){
+    LEFT_FORWARD_SPEED  = 0;
+    RIGHT_FORWARD_SPEED = 0;
+    LEFT_REVERSE_SPEED  = 0;
+    RIGHT_REVERSE_SPEED = 0;
+}
+
+void moveforward(void){
+    stopall();
+    LEFT_FORWARD_SPEED  = 700;   // Example: 70% duty cycle
+    RIGHT_FORWARD_SPEED = 700;
+}
+
+void movereverse(void){
+    stopall();
+    LEFT_REVERSE_SPEED  = 700;
+    RIGHT_REVERSE_SPEED = 700;
+}
+
+void spin_clockwise(void){
+    stopall();
+    LEFT_FORWARD_SPEED  = 700;
+    RIGHT_REVERSE_SPEED = 700;
+}
+
+void spin_counterclockwise(void){
+    stopall();
+    RIGHT_FORWARD_SPEED = 700;
+    LEFT_REVERSE_SPEED  = 500;
+}

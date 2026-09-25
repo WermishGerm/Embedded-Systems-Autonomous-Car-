@@ -1,0 +1,52 @@
+/*
+ * uart_isr.c
+ *
+ *  Created on: Dec 6, 2025
+ *      Author: jcont
+ */
+
+
+#include "msp430.h"
+#include "functions.h"
+#include "macros.h"
+#include "ports.h"
+
+// ===============================
+// PC UART (UCA1) RX INTERRUPT
+// ===============================
+#pragma vector=USCI_A1_VECTOR
+__interrupt void USCI_A1_ISR(void) {
+
+    switch (__even_in_range(UCA1IV, 0x08)) {
+
+    case 0x00: break;               // No interrupt
+    case 0x02: {                    // RXIFG
+        char c = UCA1RXBUF;
+        comm_uart_pc_rx(c);         // <-- REQUIRED
+        break;
+    }
+
+    case 0x04: break;               // TXIFG
+    case 0x06: break;               // START bit received
+    case 0x08: break;               // Transmit complete
+    }
+}
+
+
+#pragma vector=USCI_A0_VECTOR
+__interrupt void USCI_A0_ISR(void) {
+
+    switch (__even_in_range(UCA0IV, 0x08)) {
+
+    case 0x00: break;               // No interrupt
+    case 0x02: {                    // RXIFG
+        char c = UCA0RXBUF;
+        comm_uart_iot_rx(c);        // <-- REQUIRED
+        break;
+    }
+
+    case 0x04: break;               // TXIFG
+    case 0x06: break;               // START bit received
+    case 0x08: break;               // Transmit complete
+    }
+}

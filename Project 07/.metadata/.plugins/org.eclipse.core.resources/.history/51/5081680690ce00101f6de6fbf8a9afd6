@@ -1,0 +1,32 @@
+#ifndef MACROS_H_
+#define MACROS_H_
+
+#define ALWAYS (1)
+#define NONE   ('N')
+
+#define BLACK_LINE_FOLLOW 'B'
+#define STOPALL           'X'
+
+#define TEST_PROBE (0x01)
+
+#define BL_CAL_AMBIENT 20
+#define BL_CAL_WHITE   21
+#define BL_CAL_BLACK   22
+#define BL_INTERCEPT   23
+#define BL_TURN_ALIGN  24
+#define BL_FOLLOW      25
+#define BL_EXIT        27
+#define BL_STOPPED     28
+
+#define BL_MAX_LAPS 2
+
+#define STEER_BASE 300
+#define STEER_GAIN 0.20f
+#define STEER_MIN 150
+#define STEER_MAX 600
+
+#define PHASE_FILTER_MS 30
+
+#define TB0CCR0_INTERVAL (2500)
+
+#endif

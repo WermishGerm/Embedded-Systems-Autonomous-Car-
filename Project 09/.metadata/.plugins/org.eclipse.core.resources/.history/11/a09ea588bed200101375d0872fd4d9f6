@@ -1,0 +1,53 @@
+// ============================================================================
+// movement.h  — Project 09 Unified Movement Engine
+// All NEW movement code lives here. Old wheels/timers files are untouched.
+// Author: Juan Contreras-Flores
+// ============================================================================
+
+#ifndef MOVEMENT_H_
+#define MOVEMENT_H_
+
+#include <stdint.h>
+
+// ============================================================================
+// PUBLIC API
+// ============================================================================
+
+// Initialize PWM + movement state machine
+void movement_init(void);
+
+// Called continuously in main loop
+void movement_update(void);
+
+// Execute single movement command (F,B,L,R + time or angle)
+void movement_execute_command(char direction, uint16_t value);
+
+// Execute raw string commands (like "F2", "R90", "L45")
+void movement_execute_string(char *cmd);
+
+// Stop wheels immediately
+void movement_stop(void);
+
+// ============================================================================
+// Command Queue (supports multi-commands: "F2 R90 L45")
+// ============================================================================
+#define MOVE_QUEUE_SIZE   8
+
+typedef struct {
+    char direction;   // 'F', 'B', 'L', 'R'
+    uint16_t value;   // seconds or degrees
+} MoveCmd;
+
+extern MoveCmd move_queue[MOVE_QUEUE_SIZE];
+extern uint8_t move_q_head;
+extern uint8_t move_q_tail;
+
+void movement_queue_push(char direction, uint16_t value);
+uint8_t movement_queue_pop(MoveCmd *out);
+
+// ============================================================================
+// BIG FONT DISPLAY
+// ============================================================================
+void movement_display_big(char direction, uint16_t value);
+
+#endif // MOVEMENT_H_
